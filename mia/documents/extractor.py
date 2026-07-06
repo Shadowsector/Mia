@@ -13,6 +13,32 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+def clip_text(text: str, head: int = 14000, tail: int = 8000) -> str:
+    """Обрезает длинный текст, СОХРАНЯЯ начало и конец (в сметах итог — внизу)."""
+    if len(text) <= head + tail:
+        return text
+    return (
+        text[:head]
+        + "\n\n… [середина документа пропущена] …\n\n"
+        + text[-tail:]
+    )
+
+
+def _fmt_cell(v) -> str:
+    """Аккуратно форматирует значение ячейки (убирает float-артефакты Excel)."""
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "да" if v else "нет"
+    if isinstance(v, int):
+        return str(v)
+    if isinstance(v, float):
+        if v.is_integer():
+            return str(int(v))
+        return f"{v:.2f}".rstrip("0").rstrip(".")
+    return str(v).strip()
+
+
 @dataclass
 class ExtractResult:
     text: str
@@ -55,7 +81,7 @@ def _extract_xlsx(path: Path, max_rows_per_sheet: int = 2000) -> ExtractResult:
         parts.append(f"### Лист: {ws.title}")
         count = 0
         for row in ws.iter_rows(values_only=True):
-            values = [str(v) for v in row if v is not None and str(v).strip()]
+            values = [c for c in (_fmt_cell(v) for v in row) if c]
             if values:
                 parts.append(" | ".join(values))
                 count += 1
@@ -75,15 +101,7 @@ def _extract_xls(path: Path, max_rows_per_sheet: int = 2000) -> ExtractResult:
         parts.append(f"### Лист: {sheet.name}")
         rows = min(sheet.nrows, max_rows_per_sheet)
         for rx in range(rows):
-            values = []
-            for v in sheet.row_values(rx):
-                if v is None:
-                    continue
-                if isinstance(v, float) and v.is_integer():
-                    v = int(v)
-                s = str(v).strip()
-                if s:
-                    values.append(s)
+            values = [c for c in (_fmt_cell(v) for v in sheet.row_values(rx)) if c]
             if values:
                 parts.append(" | ".join(values))
         if sheet.nrows > max_rows_per_sheet:

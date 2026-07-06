@@ -13,14 +13,24 @@ from typing import Optional
 
 from mia.core.llm import LLMClient, LLMError, llm_client
 from mia.core.persona import build_system_prompt
-from mia.documents.extractor import extract_text
+from mia.documents.extractor import clip_text, extract_text
 from mia.memory.database import StoredDocument
 from mia.memory.memory_service import MemoryService
 
 logger = logging.getLogger(__name__)
 
 _FALLBACK = "Извини, сейчас немного задумалась — не получилось ответить. Попробуй ещё разок чуть позже."
-_DOC_MAX = 16000
+
+_DOC_RULES = (
+    "ОЧЕНЬ ВАЖНО про цифры и факты:\n"
+    "- Бери числа СТРОГО из текста документа, дословно. НИЧЕГО не считай сам(а) и "
+    "не складывай — легко ошибиться.\n"
+    "- Общую сумму бери из строки «ИТОГО» / «Всего» / «Итого по смете». Если таких "
+    "строк несколько — назови их и поясни, к чему относятся.\n"
+    "- Если нужной цифры в документе нет — честно скажи «в документе не нашла», "
+    "а не придумывай.\n"
+    "- Приводи суммы так, как они записаны (с валютой), не округляй по своему усмотрению."
+)
 
 
 class AssistantService:
@@ -85,13 +95,15 @@ class AssistantService:
         system_prompt = build_system_prompt(chat_title=chat_title, user_id=user_id)
         system_prompt += (
             f"\n\nК тебе обращаются по документу «{doc.file_name}». "
-            "Отвечай СТРОГО по его содержимому ниже, не выдумывай. Если в документе "
-            "нужной информации нет — так и скажи.\n\n"
-            f"Содержимое документа (может быть обрезано):\n{doc_text[:_DOC_MAX]}"
+            "Отвечай СТРОГО по его содержимому ниже, не выдумывай.\n\n"
+            f"{_DOC_RULES}\n\n"
+            f"Содержимое документа:\n{clip_text(doc_text)}"
         )
 
         try:
-            return self.llm.complete(system_prompt, text.strip(), max_tokens=1500)
+            return self.llm.complete(
+                system_prompt, text.strip(), temperature=0.2, max_tokens=1500
+            )
         except LLMError as e:
             logger.error("Ошибка LLM при разборе документа: %s", e)
             return _FALLBACK

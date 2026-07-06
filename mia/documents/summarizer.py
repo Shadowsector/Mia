@@ -15,7 +15,7 @@ from typing import Optional
 from config import settings
 from mia.core import time_utils
 from mia.core.llm import LLMClient, LLMError, llm_client
-from mia.documents.extractor import extract_text
+from mia.documents.extractor import clip_text, extract_text
 from mia.memory.database import StoredDocument
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,11 @@ _EXTRACT_PROMPT = """Ты — инженер ПТО в компании, стр�
   "status": "статус, если указан",
   "summary": "краткое содержание документа в 2-4 предложениях на русском",
   "missing": "чего не хватает или на что обратить внимание (если очевидно)"
-}}"""
+}}
+
+ВАЖНО про суммы: бери их из строки «ИТОГО»/«Всего»/«Итого по смете» ДОСЛОВНО. \
+Ничего не складывай и не считай сам. Если итоговой суммы в тексте нет — оставь \
+пустую строку. Не выдумывай цифры."""
 
 
 def _read_doc_text(doc: StoredDocument) -> str:
@@ -96,7 +100,7 @@ def extract_fields(doc: StoredDocument, llm: Optional[LLMClient] = None) -> dict
     if not text.strip():
         return {"summary": "В документе не удалось извлечь текст (возможно, скан — нужен OCR)."}
 
-    prompt = _EXTRACT_PROMPT.format(text=text[:_MAX_TEXT])
+    prompt = _EXTRACT_PROMPT.format(text=clip_text(text))
     try:
         content = llm.complete(
             system_prompt="Ты извлекаешь структурированные данные. Отвечай только JSON.",
