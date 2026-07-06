@@ -113,6 +113,48 @@ def send_logs_to_github() -> tuple[bool, str]:
     return False, f"Ошибка отправки: {r.status_code} {r.text[:200]}"
 
 
+def send_file_to_github(local_path: str) -> tuple[bool, str]:
+    """Загружает произвольный файл (например, документ для разработчика)
+    в ветку mia-logs, папка shared/. Файл именуется с меткой времени, чтобы
+    не конфликтовать с существующими."""
+    if not settings.GITHUB_TOKEN:
+        return False, "GITHUB_TOKEN не задан в .env — отправка файлов недоступна."
+
+    src = Path(local_path)
+    if not src.exists() or not src.is_file():
+        return False, "Файл не найден."
+
+    # Ограничение Contents API — около 100 МБ, но разумно держать до ~25 МБ.
+    size_mb = src.stat().st_size / (1024 * 1024)
+    if size_mb > 25:
+        return False, f"Файл слишком большой ({size_mb:.1f} МБ). До 25 МБ."
+
+    ok, msg = _ensure_logs_branch()
+    if not ok:
+        return False, msg
+
+    repo = settings.GITHUB_REPO
+    ts = time_utils.now().strftime("%Y%m%d-%H%M%S")
+    safe = src.name.replace(" ", "_")
+    path = f"shared/{ts}_{safe}"
+    content = base64.b64encode(src.read_bytes()).decode("ascii")
+    payload = {
+        "message": f"Файл для разработчика: {src.name}",
+        "content": content,
+        "branch": _LOGS_BRANCH,
+    }
+    r = requests.put(
+        f"{_API}/repos/{repo}/contents/{path}",
+        headers=_headers(),
+        json=payload,
+        timeout=120,
+    )
+    if r.status_code in (200, 201):
+        url = r.json().get("content", {}).get("html_url", "")
+        return True, f"Файл отправлен: {url or path}"
+    return False, f"Ошибка отправки: {r.status_code} {r.text[:200]}"
+
+
 def export_logs_zip(dest_path: str) -> tuple[bool, str]:
     """Собирает все логи в zip-архив (локально)."""
     logs_dir = settings.LOGS_DIR

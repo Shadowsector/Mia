@@ -252,9 +252,14 @@ class ConfiguratorApp:
 
         top = ttk.Frame(tab)
         top.pack(fill="x", padx=12, pady=(12, 4))
-        ttk.Label(top, text="Логи Mia", font=("", 13, "bold")).pack(side="left")
-        ttk.Button(top, text="Отправить на GitHub", command=self._send_logs).pack(side="right")
-        ttk.Button(top, text="Экспорт в ZIP", command=self._export_logs).pack(side="right", padx=6)
+        ttk.Label(top, text="Логи и файлы", font=("", 13, "bold")).pack(side="left")
+        ttk.Button(top, text="Отправить файл разработчику", command=self._send_file_to_dev).pack(
+            side="right", padx=6
+        )
+        ttk.Button(top, text="Отправить логи на GitHub", command=self._send_logs).pack(side="right")
+        ttk.Button(top, text="Экспорт логов в ZIP", command=self._export_logs).pack(
+            side="right", padx=6
+        )
 
         self.log_view = ScrolledText(tab, wrap="none", height=20, state="disabled")
         self.log_view.pack(fill="both", expand=True, padx=12, pady=6)
@@ -296,6 +301,26 @@ class ConfiguratorApp:
             return
         ok, msg = log_sender.export_logs_zip(dest)
         self.logs_info.set(msg)
+
+    def _send_file_to_dev(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Выберите файл для отправки разработчику",
+            filetypes=[
+                ("Документы", "*.docx *.xlsx *.xlsm *.pdf *.doc *.xls"),
+                ("Все файлы", "*.*"),
+            ],
+        )
+        if not path:
+            return
+        if not settings.GITHUB_TOKEN:
+            messagebox.showinfo(
+                "Нужен токен",
+                "Чтобы отправлять файлы через конфигуратор, впишите GITHUB_TOKEN в .env.\n\n"
+                "Либо загрузите файлы через сайт GitHub (Add file → Upload files).",
+            )
+            return
+        self.logs_info.set("Отправляю файл разработчику…")
+        self._run_bg(lambda: log_sender.send_file_to_github(path), self._on_logs_action)
 
     def _on_logs_action(self, result) -> None:
         if isinstance(result, Exception):
