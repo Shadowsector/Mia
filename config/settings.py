@@ -50,6 +50,16 @@ LOGS_DIR: Path = DATA_DIR / "logs"
 # --- Время ---
 TIMEZONE: str = _get("TIMEZONE", "Europe/Moscow")
 
+# --- GitHub (автообновление и отправка логов) ---
+# Репозиторий в формате "owner/repo".
+GITHUB_REPO: str = _get("GITHUB_REPO", "Shadowsector/Mia")
+# Ветка, с которой тянуть обновления. Пусто — использовать текущую ветку.
+UPDATE_BRANCH: str = _get("UPDATE_BRANCH", "")
+# Токен GitHub (нужен только для отправки логов и приватного репозитория).
+GITHUB_TOKEN: str = _get("GITHUB_TOKEN", "")
+# Периодичность автопроверки обновлений, минут (0 — только вручную).
+AUTO_UPDATE_INTERVAL_MIN: int = int(_get("AUTO_UPDATE_INTERVAL_MIN", "0"))
+
 # --- Справочник сотрудников ---
 # Редактируемый файл, который может править владелец (Дэн).
 EMPLOYEES_FILE: Path = BASE_DIR / "config" / "employees.json"

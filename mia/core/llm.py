@@ -16,7 +16,7 @@ from typing import Optional
 
 import requests
 
-from config import settings
+from config import runtime, settings
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class LLMClient:
     ) -> str:
         """Генерирует ответ. messages — список {role, content}."""
         payload = {
-            "model": model or self.default_model,
+            "model": model or runtime.get_active_model(),
             "messages": messages,
             "stream": False,
             "options": {
@@ -93,7 +93,7 @@ class LLMClient:
 
     # --- Эмбеддинги ---
     def embed(self, text: str, model: Optional[str] = None) -> list[float]:
-        payload = {"model": model or self.embed_model, "prompt": text}
+        payload = {"model": model or runtime.get_active_embed_model(), "prompt": text}
         try:
             resp = requests.post(
                 f"{self.base_url}/api/embeddings",
@@ -116,6 +116,17 @@ class LLMClient:
             return resp.status_code == 200
         except requests.RequestException:
             return False
+
+    def list_models(self) -> list[str]:
+        """Список установленных в Ollama моделей (имена тегов)."""
+        try:
+            resp = requests.get(f"{self.base_url}/api/tags", timeout=10)
+            if resp.status_code != 200:
+                return []
+            models = resp.json().get("models", [])
+            return sorted(m.get("name", "") for m in models if m.get("name"))
+        except requests.RequestException:
+            return []
 
 
 # Единый экземпляр клиента на приложение
