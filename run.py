@@ -1,0 +1,6 @@
+"""Запуск бота Mia: python run.py"""
+
+from mia.bot.main import main
+
+if __name__ == "__main__":
+    main()
