@@ -32,7 +32,14 @@
   ```
 - Telegram-бот от [@BotFather](https://t.me/BotFather)
 
-## Установка
+## Быстрый запуск (Windows)
+
+1. `install.bat` — установит зависимости.
+2. Скопируйте `.env.example` в `.env`, впишите `BOT_TOKEN`.
+3. Установите модели Ollama: `ollama pull qwen2.5:14b-instruct` и `ollama pull bge-m3`.
+4. `start_bot.bat` — запуск бота. `start_configurator.bat` — запуск конфигуратора.
+
+## Установка (вручную / Linux / macOS)
 
 ```bash
 # 1. Зависимости
@@ -43,7 +50,8 @@ cp .env.example .env          # Windows: copy .env.example .env
 # затем впишите BOT_TOKEN и, при необходимости, модель/пути
 
 # 3. Запуск
-python run.py
+python run.py                 # бот
+python run_configurator.py    # конфигуратор
 ```
 
 ## Конфигурация
