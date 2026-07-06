@@ -62,6 +62,31 @@ def _extract_xlsx(path: Path, max_rows_per_sheet: int = 2000) -> ExtractResult:
     return ExtractResult(text="\n".join(parts), kind="xlsx")
 
 
+def _extract_xls(path: Path, max_rows_per_sheet: int = 2000) -> ExtractResult:
+    import xlrd  # старый .xls
+
+    book = xlrd.open_workbook(str(path))
+    parts: list[str] = []
+    for sheet in book.sheets():
+        parts.append(f"### Лист: {sheet.name}")
+        rows = min(sheet.nrows, max_rows_per_sheet)
+        for rx in range(rows):
+            values = []
+            for v in sheet.row_values(rx):
+                if v is None:
+                    continue
+                if isinstance(v, float) and v.is_integer():
+                    v = int(v)
+                s = str(v).strip()
+                if s:
+                    values.append(s)
+            if values:
+                parts.append(" | ".join(values))
+        if sheet.nrows > max_rows_per_sheet:
+            parts.append("… (лист обрезан)")
+    return ExtractResult(text="\n".join(parts), kind="xls")
+
+
 def _extract_pdf(path: Path) -> ExtractResult:
     import fitz  # PyMuPDF
 
@@ -96,6 +121,8 @@ def extract_text(path: str | Path) -> ExtractResult:
             return _extract_docx(path)
         if ext in (".xlsx", ".xlsm"):
             return _extract_xlsx(path)
+        if ext == ".xls":
+            return _extract_xls(path)
         if ext == ".pdf":
             return _extract_pdf(path)
         if ext in (".txt", ".csv", ".md"):

@@ -122,10 +122,18 @@ async def _handle_summary_request(update: Update, context: ContextTypes.DEFAULT_
     chat = message.chat
     db = context.application.bot_data["db"]
 
+    from mia.bot.handlers.documents import ingest_document
+
     doc = None
     reply = message.reply_to_message
     if reply:
         doc = db.get_document_by_tg_message(chat.id, reply.message_id)
+        # Файл прислан раньше (напр. на старой версии) и ещё не в базе — разберём сейчас.
+        if doc is None and reply.document:
+            try:
+                doc = await ingest_document(reply, context)
+            except Exception as e:
+                logger.exception("Не удалось разобрать файл из reply: %s", e)
     if doc is None:
         doc = db.latest_document(chat.id)
 

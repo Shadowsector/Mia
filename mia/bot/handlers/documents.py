@@ -13,12 +13,14 @@ import asyncio
 import logging
 import re
 from pathlib import Path
+from typing import Optional
 
-from telegram import Update
+from telegram import Message, Update
 from telegram.ext import ContextTypes
 
 from config import settings
 from mia.documents.extractor import extract_text
+from mia.memory.database import StoredDocument
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +49,13 @@ def _process_document(stored_path: Path, file_name: str) -> dict:
     }
 
 
-async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    message = update.message
+async def ingest_document(
+    message: Message, context: ContextTypes.DEFAULT_TYPE
+) -> Optional[StoredDocument]:
+    """Скачивает, разбирает и сохраняет документ из сообщения. Ничего не пишет
+    в чат — только возвращает сохранённый документ (или None)."""
     if not message or not message.document:
-        return
+        return None
 
     doc = message.document
     chat = message.chat
@@ -60,21 +65,21 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     db = context.application.bot_data["db"]
     memory = context.application.bot_data["memory"]
 
+    # Уже сохраняли этот документ (по сообщению)? Вернём его.
+    existing = db.get_document_by_tg_message(chat.id, message.message_id)
+    if existing is not None:
+        return existing
+
     settings.ensure_dirs()
     file_name = doc.file_name or f"file_{doc.file_unique_id}"
     stored_path = settings.UPLOADS_DIR / _safe_filename(file_name, doc.file_unique_id)
 
-    try:
-        tg_file = await context.bot.get_file(doc.file_id)
-        await tg_file.download_to_drive(custom_path=str(stored_path))
-    except Exception as e:
-        logger.exception("Не удалось скачать документ: %s", e)
-        await message.reply_text("Не смогла скачать файл, попробуй прислать ещё раз.")
-        return
+    tg_file = await context.bot.get_file(doc.file_id)
+    await tg_file.download_to_drive(custom_path=str(stored_path))
 
     meta = await asyncio.to_thread(_process_document, stored_path, file_name)
 
-    db.add_document(
+    doc_id = db.add_document(
         chat_id=chat.id,
         file_name=file_name,
         stored_path=str(stored_path),
@@ -89,7 +94,6 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         telegram_message_id=message.message_id,
     )
 
-    # Заметка в память, чтобы «какие документы приходили» искалось по смыслу.
     note = f"[документ: {file_name}]"
     if meta["excerpt"].strip():
         note += f" {meta['excerpt'].strip()}"
@@ -104,18 +108,39 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         telegram_message_id=message.message_id,
     )
 
-    if meta["needs_ocr"]:
+    return db.get_document(doc_id)
+
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.message
+    if not message or not message.document:
+        return
+
+    file_name = message.document.file_name or "файл"
+    try:
+        stored = await ingest_document(message, context)
+    except Exception as e:
+        logger.exception("Не удалось принять документ: %s", e)
+        await message.reply_text("Не смогла скачать/разобрать файл, попробуй прислать ещё раз.")
+        return
+
+    if stored is None:
+        await message.reply_text("Не смогла обработать файл.")
+        return
+
+    if stored.needs_ocr:
         await message.reply_text(
-            f"Приняла «{file_name}». Похоже, это скан без текста — распознавание (OCR) "
-            "подключим позже. Файл я сохранила."
+            f"Приняла «{stored.file_name}». Похоже, это скан без текста — распознавание "
+            "(OCR) подключим позже. Файл я сохранила."
         )
-    elif meta["char_count"] == 0:
+    elif stored.char_count == 0:
         await message.reply_text(
-            f"Приняла «{file_name}», но не смогла извлечь текст ({meta['note'] or 'формат не поддержан'})."
+            f"Приняла «{stored.file_name}», но не смогла извлечь текст "
+            "(формат пока не поддерживается)."
         )
     else:
         await message.reply_text(
-            f"Приняла и разобрала «{file_name}». Если нужна сводка — напиши "
+            f"Приняла и разобрала «{stored.file_name}». Если нужна сводка — напиши "
             "«Миа, дай сводку по этому документу» (ответом на файл)."
         )
 
