@@ -5,9 +5,11 @@ from __future__ import annotations
 import logging
 import os
 
+from telegram.error import Conflict
 from telegram.ext import (
     Application,
     CommandHandler,
+    ContextTypes,
     MessageHandler,
     filters,
 )
@@ -23,6 +25,27 @@ from mia.memory.memory_service import MemoryService
 from mia.memory.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
+
+
+async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Аккуратно логирует ошибки. При повторных конфликтах (несколько копий
+    бота) гасит этот экземпляр, чтобы остался только один."""
+    err = context.error
+    if isinstance(err, Conflict):
+        count = context.application.bot_data.get("_conflict_count", 0) + 1
+        context.application.bot_data["_conflict_count"] = count
+        logger.warning(
+            "Похоже, запущено несколько копий бота (Conflict #%s). "
+            "Должен работать только один экземпляр.",
+            count,
+        )
+        if count >= 5:
+            logger.critical(
+                "Слишком много конфликтов — завершаю этот (лишний) экземпляр бота."
+            )
+            context.application.stop_running()
+        return
+    logger.error("Ошибка при обработке обновления: %s", err, exc_info=err)
 
 
 def build_application() -> Application:
@@ -57,6 +80,8 @@ def build_application() -> Application:
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, messages.handle_text)
     )
+
+    application.add_error_handler(_error_handler)
 
     return application
 
