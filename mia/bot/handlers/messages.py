@@ -24,12 +24,18 @@ logger = logging.getLogger(__name__)
 
 def _wants_summary(text: str) -> bool:
     t = text.lower()
-    return "сводк" in t or ("разбер" in t and "документ" in t)
+    return "сводк" in t
 
 
 def _wants_registry(text: str) -> bool:
     t = text.lower()
+    # «реестр», но не «дай сводку и добавь в реестр» — приоритет у сводки выше по коду.
     return "реестр" in t
+
+
+def _references_document(text: str) -> bool:
+    t = text.lower()
+    return any(w in t for w in ("документ", "файл", "вложени", "договор", "спецификаци"))
 
 
 def _should_respond(update: Update) -> bool:
@@ -92,14 +98,21 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not _should_respond(update):
         return
 
-    # 2a. Запрос сводки по документу.
+    # 2a. Запрос общего реестра.
+    if _wants_registry(text):
+        await _handle_registry_request(update, context)
+        return
+
+    # 2b. Явный запрос сводки (xlsx-файл).
     if _wants_summary(text):
         await _handle_summary_request(update, context)
         return
 
-    # 2b. Запрос общего реестра.
-    if _wants_registry(text):
-        await _handle_registry_request(update, context)
+    # 2c. Есть документ в фокусе (reply на файл или упоминание) → отвечаем по его
+    #     реальному содержимому, а не свободным текстом.
+    focus_doc = await _resolve_focus_document(update, context, text)
+    if focus_doc is not None:
+        await _handle_document_question(update, context, focus_doc)
         return
 
     await context.bot.send_chat_action(chat_id=chat.id, action=ChatAction.TYPING)
@@ -115,6 +128,62 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     except Exception as e:
         logger.exception("Ошибка при ответе на сообщение: %s", e)
         await message.reply_text("Что-то пошло не так. Попробуй, пожалуйста, чуть позже.")
+
+
+async def _resolve_focus_document(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
+):
+    """Определяет документ, о котором идёт речь: reply на файл или упоминание."""
+    from mia.bot.handlers.documents import ingest_document
+
+    message = update.message
+    chat = message.chat
+    db = context.application.bot_data["db"]
+
+    reply = message.reply_to_message
+    if reply and reply.document:
+        doc = db.get_document_by_tg_message(chat.id, reply.message_id)
+        if doc is None:
+            try:
+                doc = await ingest_document(reply, context)
+            except Exception as e:
+                logger.exception("Не удалось разобрать файл из reply: %s", e)
+        return doc
+
+    if _references_document(text):
+        return db.latest_document(chat.id)
+
+    return None
+
+
+async def _handle_document_question(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, doc
+) -> None:
+    message = update.message
+    chat = message.chat
+    user = message.from_user
+    assistant = context.application.bot_data["assistant"]
+
+    if doc.needs_ocr or doc.char_count == 0:
+        await message.reply_text(
+            f"Файл «{doc.file_name}» я сохранила, но текст из него не извлёкся "
+            "(похоже, скан — распознавание подключим позже). Разобрать содержимое не могу."
+        )
+        return
+
+    await context.bot.send_chat_action(chat_id=chat.id, action=ChatAction.TYPING)
+    try:
+        response = await asyncio.to_thread(
+            assistant.answer_about_document,
+            text=message.text,
+            doc=doc,
+            chat_title=chat.title or (user.full_name if user else "Личный чат"),
+            user_id=user.id if user else None,
+        )
+        await message.reply_text(response)
+    except Exception as e:
+        logger.exception("Ошибка при разборе документа: %s", e)
+        await message.reply_text("Не получилось разобрать документ. Загляни в логи, пожалуйста.")
 
 
 async def _handle_summary_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
