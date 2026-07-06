@@ -66,6 +66,14 @@ def get_active_embed_model() -> str:
     return get("active_embed_model") or settings.EMBED_MODEL
 
 
+def get_active_vision_model() -> str:
+    return get("active_vision_model") or settings.VISION_MODEL
+
+
+def set_active_vision_model(model: str) -> None:
+    set_value("active_vision_model", model)
+
+
 def set_active_model(model: str) -> None:
     set_value("active_model", model)
 

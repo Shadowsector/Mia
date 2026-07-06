@@ -91,6 +91,45 @@ class LLMClient:
             messages, model=model, temperature=temperature, max_tokens=max_tokens
         )
 
+    # --- Vision (распознавание изображений) ---
+    def chat_with_images(
+        self,
+        prompt: str,
+        images: list[bytes],
+        model: Optional[str] = None,
+        system: Optional[str] = None,
+        temperature: float = 0.1,
+        max_tokens: int = 2048,
+    ) -> str:
+        """Отправляет изображения (PNG/JPEG bytes) в vision-модель Ollama."""
+        import base64
+
+        encoded = [base64.b64encode(img).decode("ascii") for img in images]
+        messages: list[dict] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt, "images": encoded})
+
+        payload = {
+            "model": model or runtime.get_active_vision_model(),
+            "messages": messages,
+            "stream": False,
+            "options": {"temperature": temperature, "num_predict": max_tokens},
+        }
+        try:
+            resp = requests.post(
+                f"{self.base_url}/api/chat", json=payload, timeout=self.timeout
+            )
+        except requests.RequestException as e:
+            raise LLMError(f"Не удалось связаться с Ollama (vision): {e}") from e
+
+        if resp.status_code != 200:
+            raise LLMError(
+                f"Ollama (vision) вернул статус {resp.status_code}: {resp.text[:200]}"
+            )
+        data = resp.json()
+        return ((data.get("message") or {}).get("content", "")).strip()
+
     # --- Эмбеддинги ---
     def embed(self, text: str, model: Optional[str] = None) -> list[float]:
         payload = {"model": model or runtime.get_active_embed_model(), "prompt": text}

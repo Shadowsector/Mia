@@ -130,8 +130,8 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     if stored.needs_ocr:
         await message.reply_text(
-            f"Приняла «{stored.file_name}». Похоже, это скан без текста — распознавание "
-            "(OCR) подключим позже. Файл я сохранила."
+            f"Приняла «{stored.file_name}» — похоже, это скан. Распознаю текст, когда "
+            "попросишь сводку или зададашь вопрос по нему."
         )
     elif stored.char_count == 0:
         await message.reply_text(

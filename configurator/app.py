@@ -148,6 +148,9 @@ class ConfiguratorApp:
         ttk.Button(actions, text="Сделать моделью эмбеддингов", command=self._set_embed_model).grid(
             row=0, column=1, padx=4
         )
+        ttk.Button(actions, text="Сделать vision-моделью (OCR)", command=self._set_vision_model).grid(
+            row=0, column=2, padx=4
+        )
 
         self.models_info = tk.StringVar(value="")
         ttk.Label(tab, textvariable=self.models_info, foreground="#555").pack(
@@ -164,8 +167,9 @@ class ConfiguratorApp:
         elif models:
             self.model_combo.set(models[0])
         self.models_info.set(
-            f"Активная модель чата: {runtime.get_active_model()} | "
-            f"эмбеддинги: {runtime.get_active_embed_model()}"
+            f"Чат: {runtime.get_active_model()} | "
+            f"эмбеддинги: {runtime.get_active_embed_model()} | "
+            f"vision: {runtime.get_active_vision_model()}"
         )
 
     def _set_chat_model(self) -> None:
@@ -181,6 +185,13 @@ class ConfiguratorApp:
             return
         runtime.set_active_embed_model(model)
         self.models_info.set(f"Модель эмбеддингов: {model}.")
+
+    def _set_vision_model(self) -> None:
+        model = self.model_combo.get()
+        if not model:
+            return
+        runtime.set_active_vision_model(model)
+        self.models_info.set(f"Vision-модель (OCR): {model}.")
 
     # ---------- Вкладка: Обновления ----------
     def _build_update_tab(self, nb: ttk.Notebook) -> None:

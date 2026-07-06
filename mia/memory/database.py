@@ -192,6 +192,18 @@ class Database:
             self._conn.commit()
             return int(cur.lastrowid)
 
+    def update_document_text(
+        self, doc_id: int, text_path: str, char_count: int, needs_ocr: bool = False
+    ) -> None:
+        with self._lock:
+            self._conn.execute(
+                """UPDATE documents
+                   SET text_path = ?, char_count = ?, needs_ocr = ?
+                   WHERE id = ?""",
+                (text_path, char_count, 1 if needs_ocr else 0, doc_id),
+            )
+            self._conn.commit()
+
     def get_document(self, doc_id: int) -> Optional[StoredDocument]:
         with self._lock:
             row = self._conn.execute(

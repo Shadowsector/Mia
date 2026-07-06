@@ -17,7 +17,7 @@ from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
 from config import settings
-from mia.documents import summarizer
+from mia.documents import ocr, summarizer
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +130,22 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await message.reply_text("Что-то пошло не так. Попробуй, пожалуйста, чуть позже.")
 
 
+async def _ensure_text_with_ocr(update: Update, context: ContextTypes.DEFAULT_TYPE, doc):
+    """Если текста нет (скан) — запускает OCR, предупредив пользователя."""
+    if not (doc.needs_ocr or doc.char_count == 0):
+        return doc
+    db = context.application.bot_data["db"]
+    if not await asyncio.to_thread(ocr.vision_available):
+        return doc
+    await update.message.reply_text(
+        f"«{doc.file_name}» похоже на скан — распознаю текст, это может занять минуту…"
+    )
+    await context.bot.send_chat_action(
+        chat_id=update.message.chat.id, action=ChatAction.TYPING
+    )
+    return await asyncio.to_thread(ocr.ensure_document_text, doc, db)
+
+
 async def _resolve_focus_document(
     update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
 ):
@@ -164,10 +180,13 @@ async def _handle_document_question(
     user = message.from_user
     assistant = context.application.bot_data["assistant"]
 
+    db = context.application.bot_data["db"]
+    doc = await _ensure_text_with_ocr(update, context, doc)
     if doc.needs_ocr or doc.char_count == 0:
         await message.reply_text(
-            f"Файл «{doc.file_name}» я сохранила, но текст из него не извлёкся "
-            "(похоже, скан — распознавание подключим позже). Разобрать содержимое не могу."
+            f"Файл «{doc.file_name}» я сохранила, но распознать текст не удалось. "
+            "Если это скан — проверь, что установлена vision-модель "
+            "(ollama pull qwen2.5vl:7b)."
         )
         return
 
@@ -212,10 +231,12 @@ async def _handle_summary_request(update: Update, context: ContextTypes.DEFAULT_
         )
         return
 
+    doc = await _ensure_text_with_ocr(update, context, doc)
     if doc.needs_ocr or doc.char_count == 0:
         await message.reply_text(
-            f"По «{doc.file_name}» пока не могу сделать сводку — из файла не извлёкся текст "
-            "(вероятно, скан; OCR подключим позже)."
+            f"По «{doc.file_name}» не могу сделать сводку — не удалось распознать текст. "
+            "Если это скан, проверь, что установлена vision-модель "
+            "(ollama pull qwen2.5vl:7b)."
         )
         return
 

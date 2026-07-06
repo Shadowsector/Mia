@@ -36,6 +36,14 @@ LLM_TEMPERATURE: float = float(_get("LLM_TEMPERATURE", "0.6"))
 LLM_MAX_TOKENS: int = int(_get("LLM_MAX_TOKENS", "1200"))
 LLM_TIMEOUT: int = int(_get("LLM_TIMEOUT", "300"))
 
+# --- Vision / OCR ---
+# Модель с поддержкой изображений для распознавания сканов (PDF, фото).
+VISION_MODEL: str = _get("VISION_MODEL", "qwen2.5vl:7b")
+# Максимум страниц скана для OCR (защита от очень тяжёлых файлов).
+OCR_MAX_PAGES: int = int(_get("OCR_MAX_PAGES", "15"))
+# Разрешение рендера страниц PDF в изображение (DPI).
+OCR_DPI: int = int(_get("OCR_DPI", "180"))
+
 # --- Данные ---
 _data_dir_raw = _get("DATA_DIR", str(BASE_DIR / "data"))
 DATA_DIR: Path = Path(_data_dir_raw)
