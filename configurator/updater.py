@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -131,3 +132,24 @@ def apply_update(branch: Optional[str] = None) -> UpdateStatus:
         "Перезапустите бота, чтобы изменения вступили в силу.",
         local_commit=new_commit,
     )
+
+
+def install_requirements() -> tuple[bool, str]:
+    """Устанавливает/обновляет зависимости из requirements.txt."""
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"],
+            cwd=str(settings.BASE_DIR),
+            capture_output=True,
+            text=True,
+            timeout=1200,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "Установка зависимостей: превышено время ожидания."
+    except Exception as e:  # noqa: BLE001
+        return False, f"Ошибка установки зависимостей: {e}"
+
+    if proc.returncode == 0:
+        return True, "Зависимости установлены/обновлены."
+    tail = (proc.stdout + proc.stderr).strip()[-300:]
+    return False, f"Ошибка установки зависимостей: {tail}"

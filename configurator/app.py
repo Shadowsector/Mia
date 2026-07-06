@@ -45,6 +45,11 @@ class ConfiguratorApp:
         self._refresh_status()
         self._schedule_log_refresh()
         self._apply_auto_update_setting(initial=True)
+        self._maybe_autostart_bot()
+
+    def _maybe_autostart_bot(self) -> None:
+        if runtime.get("autostart_bot", False) and not self.bot.is_running():
+            self.root.after(500, self._start_bot)
 
     # ---------- Статус-бар ----------
     def _build_statusbar(self) -> None:
@@ -76,8 +81,20 @@ class ConfiguratorApp:
         ttk.Button(btns, text="■ Остановить", command=self._stop_bot).grid(row=0, column=1, padx=4)
         ttk.Button(btns, text="⟳ Перезапустить", command=self._restart_bot).grid(row=0, column=2, padx=4)
 
+        deps = ttk.Frame(tab)
+        deps.pack(anchor="w", padx=12, pady=6)
+        ttk.Button(
+            deps, text="Установить/обновить зависимости", command=self._install_deps
+        ).grid(row=0, column=0, padx=4)
+
+        self.autostart_var = tk.BooleanVar(value=bool(runtime.get("autostart_bot", False)))
+        ttk.Checkbutton(
+            tab, text="Запускать бота автоматически при старте конфигуратора",
+            variable=self.autostart_var, command=self._toggle_autostart,
+        ).pack(anchor="w", padx=12, pady=4)
+
         self.control_info = tk.StringVar(value="")
-        ttk.Label(tab, textvariable=self.control_info, foreground="#555").pack(
+        ttk.Label(tab, textvariable=self.control_info, foreground="#555", wraplength=760).pack(
             anchor="w", padx=12, pady=8
         )
 
@@ -92,6 +109,20 @@ class ConfiguratorApp:
     def _restart_bot(self) -> None:
         ok, msg = self.bot.restart()
         self.control_info.set(msg)
+
+    def _install_deps(self) -> None:
+        self.control_info.set("Устанавливаю зависимости, это может занять пару минут…")
+        self._run_bg(updater.install_requirements, self._on_deps_result)
+
+    def _on_deps_result(self, result) -> None:
+        if isinstance(result, Exception):
+            self.control_info.set(f"Ошибка: {result}")
+            return
+        ok, msg = result
+        self.control_info.set(msg)
+
+    def _toggle_autostart(self) -> None:
+        runtime.set_value("autostart_bot", bool(self.autostart_var.get()))
 
     # ---------- Вкладка: Модели ----------
     def _build_models_tab(self, nb: ttk.Notebook) -> None:
@@ -209,6 +240,9 @@ class ConfiguratorApp:
             if was_running:
                 self.bot.stop()
             status = updater.apply_update()
+            if status.ok and not status.has_updates:
+                # Обновление применено — доустановим зависимости на случай их изменения.
+                updater.install_requirements()
             if status.ok and was_running:
                 self.bot.start()
             return status

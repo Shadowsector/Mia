@@ -43,9 +43,13 @@ def _extract_docx(path: Path) -> ExtractResult:
 
 
 def _extract_xlsx(path: Path, max_rows_per_sheet: int = 2000) -> ExtractResult:
+    import warnings
+
     import openpyxl
 
-    wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
     parts: list[str] = []
     for ws in wb.worksheets:
         parts.append(f"### Лист: {ws.title}")
