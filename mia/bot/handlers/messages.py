@@ -18,6 +18,7 @@ from telegram.ext import ContextTypes
 
 from config import settings
 from mia.documents import ocr, summarizer
+from mia.rag.anythingllm import anythingllm_client
 
 logger = logging.getLogger(__name__)
 
@@ -108,12 +109,26 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await _handle_summary_request(update, context)
         return
 
-    # 2c. Есть документ в фокусе (reply на файл или упоминание) → отвечаем по его
-    #     реальному содержимому, а не свободным текстом.
-    focus_doc = await _resolve_focus_document(update, context, text)
-    if focus_doc is not None:
-        await _handle_document_question(update, context, focus_doc)
-        return
+    # 2c. Reply на конкретный файл → точный ответ по его полному тексту.
+    reply = message.reply_to_message
+    if reply and reply.document:
+        focus_doc = await _resolve_focus_document(update, context, text)
+        if focus_doc is not None:
+            await _handle_document_question(update, context, focus_doc)
+            return
+
+    # 2d. Общий вопрос по документам/объектам → RAG (AnythingLLM), если доступен.
+    if _references_document(text) and anythingllm_client.is_available():
+        handled = await _handle_rag_question(update, context, text)
+        if handled:
+            return
+
+    # 2e. Нет RAG, но речь про документ → отвечаем по последнему присланному.
+    if _references_document(text):
+        focus_doc = context.application.bot_data["db"].latest_document(chat.id)
+        if focus_doc is not None:
+            await _handle_document_question(update, context, focus_doc)
+            return
 
     await context.bot.send_chat_action(chat_id=chat.id, action=ChatAction.TYPING)
     try:
@@ -128,6 +143,36 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     except Exception as e:
         logger.exception("Ошибка при ответе на сообщение: %s", e)
         await message.reply_text("Что-то пошло не так. Попробуй, пожалуйста, чуть позже.")
+
+
+async def _handle_rag_question(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
+) -> bool:
+    """Вопрос по всей базе документов через AnythingLLM. True — если ответили."""
+    message = update.message
+    chat = message.chat
+    await context.bot.send_chat_action(chat_id=chat.id, action=ChatAction.TYPING)
+    try:
+        result = await asyncio.to_thread(anythingllm_client.query, text)
+    except Exception as e:
+        logger.warning("Ошибка запроса к AnythingLLM: %s", e)
+        return False
+
+    if not result or not (result.get("text") or "").strip():
+        return False
+
+    answer = result["text"].strip()
+    sources = result.get("sources") or []
+    names = []
+    for s in sources[:5]:
+        name = s.get("title") or s.get("name") or (s.get("metadata") or {}).get("title")
+        if name and name not in names:
+            names.append(name)
+    if names:
+        answer += "\n\nИсточники: " + ", ".join(names)
+
+    await message.reply_text(answer)
+    return True
 
 
 async def _ensure_text_with_ocr(update: Update, context: ContextTypes.DEFAULT_TYPE, doc):

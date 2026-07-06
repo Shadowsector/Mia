@@ -58,6 +58,11 @@ LOGS_DIR: Path = DATA_DIR / "logs"
 # --- Время ---
 TIMEZONE: str = _get("TIMEZONE", "Europe/Moscow")
 
+# --- AnythingLLM (RAG / агенты для свободных вопросов по документам) ---
+ANYTHINGLLM_BASE_URL: str = _get("ANYTHINGLLM_BASE_URL", "http://localhost:3001").rstrip("/")
+ANYTHINGLLM_API_KEY: str = _get("ANYTHINGLLM_API_KEY", "")
+ANYTHINGLLM_WORKSPACE: str = _get("ANYTHINGLLM_WORKSPACE", "mia")
+
 # --- GitHub (автообновление и отправка логов) ---
 # Репозиторий в формате "owner/repo".
 GITHUB_REPO: str = _get("GITHUB_REPO", "Shadowsector/Mia")

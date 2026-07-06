@@ -21,8 +21,22 @@ from telegram.ext import ContextTypes
 from config import settings
 from mia.documents.extractor import extract_text
 from mia.memory.database import StoredDocument
+from mia.rag.anythingllm import anythingllm_client
 
 logger = logging.getLogger(__name__)
+
+
+def _push_to_rag(stored_path: str) -> None:
+    """Best-effort: добавить документ в базу AnythingLLM (RAG)."""
+    try:
+        if not anythingllm_client.is_configured():
+            return
+        anythingllm_client.ensure_workspace()
+        ok = anythingllm_client.upload_and_embed(stored_path)
+        if ok:
+            logger.info("Документ добавлен в RAG (AnythingLLM): %s", stored_path)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Не удалось добавить документ в RAG: %s", e)
 
 
 def _safe_filename(name: str, unique: str) -> str:
@@ -107,6 +121,10 @@ async def ingest_document(
         msg_type="document",
         telegram_message_id=message.message_id,
     )
+
+    # В фоне отправляем документ в RAG (AnythingLLM), если он есть текст.
+    if meta["char_count"] > 0:
+        asyncio.create_task(asyncio.to_thread(_push_to_rag, str(stored_path)))
 
     return db.get_document(doc_id)
 

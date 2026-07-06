@@ -19,6 +19,7 @@ from config import runtime, settings
 from configurator import log_sender, updater
 from configurator.process_manager import BotProcessManager
 from mia.core.llm import llm_client
+from mia.rag.anythingllm import anythingllm_client
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +60,27 @@ class ConfiguratorApp:
         ttk.Label(bar, textvariable=self.status_var).pack(side="left")
 
     def _refresh_status(self) -> None:
-        ollama = "доступен" if llm_client.is_available() else "НЕ доступен"
-        commit = updater.current_commit() or "—"
-        self.status_var.set(
-            f"Бот: {self.bot.status_text()}   |   Ollama: {ollama}   |   "
-            f"Модель: {runtime.get_active_model()}   |   Версия: {commit}"
-        )
-        self.root.after(4000, self._refresh_status)
+        bot_status = self.bot.status_text()
+
+        def compute():
+            ollama = "доступен" if llm_client.is_available() else "НЕ доступен"
+            commit = updater.current_commit() or "—"
+            if anythingllm_client.is_configured():
+                rag = "подключён" if anythingllm_client.is_available() else "НЕ отвечает"
+            else:
+                rag = "не настроен"
+            return (
+                f"Бот: {bot_status}   |   Ollama: {ollama}   |   RAG: {rag}   |   "
+                f"Модель: {runtime.get_active_model()}   |   Версия: {commit}"
+            )
+
+        self._run_bg(compute, self._set_status)
+        self.root.after(5000, self._refresh_status)
+
+    def _set_status(self, result) -> None:
+        if isinstance(result, Exception):
+            return
+        self.status_var.set(result)
 
     # ---------- Вкладка: Управление ----------
     def _build_control_tab(self, nb: ttk.Notebook) -> None:
