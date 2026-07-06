@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from telegram.ext import (
     Application,
@@ -14,6 +15,7 @@ from telegram.ext import (
 from config import settings
 from mia.assistant.service import AssistantService
 from mia.bot.handlers import commands, documents, messages
+from mia.core import instance
 from mia.core.llm import llm_client
 from mia.core.logging_setup import setup_logging
 from mia.memory.database import Database
@@ -63,6 +65,15 @@ def main() -> None:
     setup_logging()
     logger.info("Запуск Mia Assistant v%s", __import__("mia").__version__)
 
+    # Защита от двойного запуска (иначе Telegram выдаст конфликт).
+    if instance.is_running():
+        logger.error(
+            "Похоже, бот уже запущен (PID %s). Второй экземпляр не запускаю. "
+            "Остановите первый через конфигуратор.",
+            instance.get_pid(),
+        )
+        return
+
     if not llm_client.is_available():
         logger.warning(
             "Ollama недоступен по адресу %s. Бот запустится, но ответы/эмбеддинги "
@@ -71,9 +82,15 @@ def main() -> None:
         )
 
     application = build_application()
+    instance.mark_running(os.getpid())
+    instance.start_heartbeat_thread()
     logger.info("Бот запущен. Модель: %s, эмбеддинги: %s",
                 settings.LLM_MODEL, settings.EMBED_MODEL)
-    application.run_polling(allowed_updates=["message"])
+    try:
+        application.run_polling(allowed_updates=["message"])
+    finally:
+        instance.clear()
+        logger.info("Бот остановлен.")
 
 
 if __name__ == "__main__":
