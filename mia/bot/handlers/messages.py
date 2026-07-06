@@ -10,14 +10,26 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
 from config import settings
+from mia.documents import summarizer
 
 logger = logging.getLogger(__name__)
+
+
+def _wants_summary(text: str) -> bool:
+    t = text.lower()
+    return "сводк" in t or ("разбер" in t and "документ" in t)
+
+
+def _wants_registry(text: str) -> bool:
+    t = text.lower()
+    return "реестр" in t
 
 
 def _should_respond(update: Update) -> bool:
@@ -80,6 +92,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not _should_respond(update):
         return
 
+    # 2a. Запрос сводки по документу.
+    if _wants_summary(text):
+        await _handle_summary_request(update, context)
+        return
+
+    # 2b. Запрос общего реестра.
+    if _wants_registry(text):
+        await _handle_registry_request(update, context)
+        return
+
     await context.bot.send_chat_action(chat_id=chat.id, action=ChatAction.TYPING)
     try:
         response = await asyncio.to_thread(
@@ -93,3 +115,66 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     except Exception as e:
         logger.exception("Ошибка при ответе на сообщение: %s", e)
         await message.reply_text("Что-то пошло не так. Попробуй, пожалуйста, чуть позже.")
+
+
+async def _handle_summary_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.message
+    chat = message.chat
+    db = context.application.bot_data["db"]
+
+    doc = None
+    reply = message.reply_to_message
+    if reply:
+        doc = db.get_document_by_tg_message(chat.id, reply.message_id)
+    if doc is None:
+        doc = db.latest_document(chat.id)
+
+    if doc is None:
+        await message.reply_text(
+            "Я не вижу документа для сводки. Пришли файл или ответь этой командой на сообщение с файлом."
+        )
+        return
+
+    if doc.needs_ocr or doc.char_count == 0:
+        await message.reply_text(
+            f"По «{doc.file_name}» пока не могу сделать сводку — из файла не извлёкся текст "
+            "(вероятно, скан; OCR подключим позже)."
+        )
+        return
+
+    await context.bot.send_chat_action(chat_id=chat.id, action=ChatAction.UPLOAD_DOCUMENT)
+    await message.reply_text(f"Разбираю «{doc.file_name}» и готовлю сводку, минутку…")
+
+    try:
+        result = await asyncio.to_thread(summarizer.summarize, doc)
+    except Exception as e:
+        logger.exception("Ошибка при формировании сводки: %s", e)
+        await message.reply_text("Не получилось собрать сводку. Загляни в логи, пожалуйста.")
+        return
+
+    caption = (result.get("text_summary") or "Готова сводка по документу.")[:900]
+    summary_path = result["summary_path"]
+    try:
+        with open(summary_path, "rb") as f:
+            await message.reply_document(
+                document=f, filename=Path(summary_path).name, caption=caption
+            )
+    except Exception as e:
+        logger.exception("Ошибка отправки файла сводки: %s", e)
+        await message.reply_text(caption)
+
+
+async def _handle_registry_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.message
+    chat = message.chat
+    registry_path = settings.DATA_DIR / "Реестр.xlsx"
+    if not registry_path.exists():
+        await message.reply_text(
+            "Общий реестр пока пуст. Он наполняется, когда просят сводки по документам."
+        )
+        return
+    await context.bot.send_chat_action(chat_id=chat.id, action=ChatAction.UPLOAD_DOCUMENT)
+    with open(registry_path, "rb") as f:
+        await message.reply_document(
+            document=f, filename="Реестр.xlsx", caption="Общий реестр документов."
+        )
