@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 
 _GIT_TIMEOUT = 120
 
+# Не показывать окно консоли для дочерних процессов (git, pip) на Windows —
+# важно при запуске конфигуратора без консоли.
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0
+
 
 @dataclass
 class UpdateStatus:
@@ -46,6 +50,7 @@ def _run_git(args: list[str], retries: int = 1) -> tuple[int, str]:
                 capture_output=True,
                 text=True,
                 timeout=_GIT_TIMEOUT,
+                creationflags=_NO_WINDOW,
             )
             out = (proc.stdout + proc.stderr).strip()
             if proc.returncode == 0:
@@ -143,6 +148,7 @@ def install_requirements() -> tuple[bool, str]:
             capture_output=True,
             text=True,
             timeout=1200,
+            creationflags=_NO_WINDOW,
         )
     except subprocess.TimeoutExpired:
         return False, "Установка зависимостей: превышено время ожидания."
