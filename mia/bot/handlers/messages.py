@@ -1,0 +1,323 @@
+"""Обработчик текстовых сообщений.
+
+Ключевой принцип: сохраняем КАЖДОЕ сообщение (даже не адресованное Мие),
+а отвечаем только когда к Мие обратились:
+  - в личке — всегда;
+  - в группе — по @упоминанию или reply на сообщение Мии.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from pathlib import Path
+
+from telegram import Update
+from telegram.constants import ChatAction
+from telegram.ext import ContextTypes
+
+from config import settings
+from mia.documents import ocr, summarizer
+from mia.rag.anythingllm import anythingllm_client
+
+logger = logging.getLogger(__name__)
+
+
+def _wants_summary(text: str) -> bool:
+    t = text.lower()
+    return "сводк" in t
+
+
+def _wants_registry(text: str) -> bool:
+    t = text.lower()
+    # «реестр», но не «дай сводку и добавь в реестр» — приоритет у сводки выше по коду.
+    return "реестр" in t
+
+
+def _references_document(text: str) -> bool:
+    t = text.lower()
+    return any(w in t for w in ("документ", "файл", "вложени", "договор", "спецификаци"))
+
+
+def _should_respond(update: Update) -> bool:
+    message = update.message
+    if not message or not message.text:
+        return False
+
+    chat = message.chat
+    if chat.type == "private":
+        return True
+
+    text = message.text or ""
+    username = settings.BOT_USERNAME
+    if username and username.lower() in text.lower():
+        return True
+
+    reply = message.reply_to_message
+    if reply and reply.from_user and reply.from_user.username:
+        if reply.from_user.username.lower() == username.lstrip("@").lower():
+            return True
+
+    return False
+
+
+def _display_name(update: Update) -> str:
+    user = update.effective_user
+    if not user:
+        return "аноним"
+    return user.full_name or user.username or str(user.id)
+
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.message
+    if not message or not message.text:
+        return
+
+    chat = message.chat
+    user = message.from_user
+    chat_title = chat.title or (user.full_name if user else "Личный чат")
+    user_id = user.id if user else None
+    user_name = _display_name(update)
+    text = message.text
+
+    memory = context.application.bot_data["memory"]
+    assistant = context.application.bot_data["assistant"]
+
+    # 1. Сохраняем ВСЕ сообщения (тихо).
+    await asyncio.to_thread(
+        memory.remember_message,
+        chat_id=chat.id,
+        text=text,
+        chat_title=chat_title,
+        user_id=user_id,
+        user_name=user_name,
+        msg_type="text",
+        telegram_message_id=message.message_id,
+    )
+
+    # 2. Отвечаем только если обратились к Мие.
+    if not _should_respond(update):
+        return
+
+    # 2a. Запрос общего реестра.
+    if _wants_registry(text):
+        await _handle_registry_request(update, context)
+        return
+
+    # 2b. Явный запрос сводки (xlsx-файл).
+    if _wants_summary(text):
+        await _handle_summary_request(update, context)
+        return
+
+    # 2c. Reply на конкретный файл → точный ответ по его полному тексту.
+    reply = message.reply_to_message
+    if reply and reply.document:
+        focus_doc = await _resolve_focus_document(update, context, text)
+        if focus_doc is not None:
+            await _handle_document_question(update, context, focus_doc)
+            return
+
+    # 2d. Общий вопрос по документам/объектам → RAG (AnythingLLM), если доступен.
+    if _references_document(text) and anythingllm_client.is_available():
+        handled = await _handle_rag_question(update, context, text)
+        if handled:
+            return
+
+    # 2e. Нет RAG, но речь про документ → отвечаем по последнему присланному.
+    if _references_document(text):
+        focus_doc = context.application.bot_data["db"].latest_document(chat.id)
+        if focus_doc is not None:
+            await _handle_document_question(update, context, focus_doc)
+            return
+
+    await context.bot.send_chat_action(chat_id=chat.id, action=ChatAction.TYPING)
+    try:
+        response = await asyncio.to_thread(
+            assistant.answer,
+            text=text,
+            chat_id=chat.id,
+            chat_title=chat_title,
+            user_id=user_id,
+        )
+        await message.reply_text(response)
+    except Exception as e:
+        logger.exception("Ошибка при ответе на сообщение: %s", e)
+        await message.reply_text("Что-то пошло не так. Попробуй, пожалуйста, чуть позже.")
+
+
+async def _handle_rag_question(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
+) -> bool:
+    """Вопрос по всей базе документов через AnythingLLM. True — если ответили."""
+    message = update.message
+    chat = message.chat
+    await context.bot.send_chat_action(chat_id=chat.id, action=ChatAction.TYPING)
+    try:
+        result = await asyncio.to_thread(anythingllm_client.query, text)
+    except Exception as e:
+        logger.warning("Ошибка запроса к AnythingLLM: %s", e)
+        return False
+
+    if not result or not (result.get("text") or "").strip():
+        return False
+
+    answer = result["text"].strip()
+    sources = result.get("sources") or []
+    names = []
+    for s in sources[:5]:
+        name = s.get("title") or s.get("name") or (s.get("metadata") or {}).get("title")
+        if name and name not in names:
+            names.append(name)
+    if names:
+        answer += "\n\nИсточники: " + ", ".join(names)
+
+    await message.reply_text(answer)
+    return True
+
+
+async def _ensure_text_with_ocr(update: Update, context: ContextTypes.DEFAULT_TYPE, doc):
+    """Если текста нет (скан) — запускает OCR, предупредив пользователя."""
+    if not (doc.needs_ocr or doc.char_count == 0):
+        return doc
+    db = context.application.bot_data["db"]
+    if not await asyncio.to_thread(ocr.vision_available):
+        return doc
+    await update.message.reply_text(
+        f"«{doc.file_name}» похоже на скан — распознаю текст, это может занять минуту…"
+    )
+    await context.bot.send_chat_action(
+        chat_id=update.message.chat.id, action=ChatAction.TYPING
+    )
+    return await asyncio.to_thread(ocr.ensure_document_text, doc, db)
+
+
+async def _resolve_focus_document(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
+):
+    """Определяет документ, о котором идёт речь: reply на файл или упоминание."""
+    from mia.bot.handlers.documents import ingest_document
+
+    message = update.message
+    chat = message.chat
+    db = context.application.bot_data["db"]
+
+    reply = message.reply_to_message
+    if reply and reply.document:
+        doc = db.get_document_by_tg_message(chat.id, reply.message_id)
+        if doc is None:
+            try:
+                doc = await ingest_document(reply, context)
+            except Exception as e:
+                logger.exception("Не удалось разобрать файл из reply: %s", e)
+        return doc
+
+    if _references_document(text):
+        return db.latest_document(chat.id)
+
+    return None
+
+
+async def _handle_document_question(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, doc
+) -> None:
+    message = update.message
+    chat = message.chat
+    user = message.from_user
+    assistant = context.application.bot_data["assistant"]
+
+    db = context.application.bot_data["db"]
+    doc = await _ensure_text_with_ocr(update, context, doc)
+    if doc.needs_ocr or doc.char_count == 0:
+        await message.reply_text(
+            f"Файл «{doc.file_name}» я сохранила, но распознать текст не удалось. "
+            "Если это скан — проверь, что установлена vision-модель "
+            "(ollama pull qwen2.5vl:7b)."
+        )
+        return
+
+    await context.bot.send_chat_action(chat_id=chat.id, action=ChatAction.TYPING)
+    try:
+        response = await asyncio.to_thread(
+            assistant.answer_about_document,
+            text=message.text,
+            doc=doc,
+            chat_title=chat.title or (user.full_name if user else "Личный чат"),
+            user_id=user.id if user else None,
+        )
+        await message.reply_text(response)
+    except Exception as e:
+        logger.exception("Ошибка при разборе документа: %s", e)
+        await message.reply_text("Не получилось разобрать документ. Загляни в логи, пожалуйста.")
+
+
+async def _handle_summary_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.message
+    chat = message.chat
+    db = context.application.bot_data["db"]
+
+    from mia.bot.handlers.documents import ingest_document
+
+    doc = None
+    reply = message.reply_to_message
+    if reply:
+        doc = db.get_document_by_tg_message(chat.id, reply.message_id)
+        # Файл прислан раньше (напр. на старой версии) и ещё не в базе — разберём сейчас.
+        if doc is None and reply.document:
+            try:
+                doc = await ingest_document(reply, context)
+            except Exception as e:
+                logger.exception("Не удалось разобрать файл из reply: %s", e)
+    if doc is None:
+        doc = db.latest_document(chat.id)
+
+    if doc is None:
+        await message.reply_text(
+            "Я не вижу документа для сводки. Пришли файл или ответь этой командой на сообщение с файлом."
+        )
+        return
+
+    doc = await _ensure_text_with_ocr(update, context, doc)
+    if doc.needs_ocr or doc.char_count == 0:
+        await message.reply_text(
+            f"По «{doc.file_name}» не могу сделать сводку — не удалось распознать текст. "
+            "Если это скан, проверь, что установлена vision-модель "
+            "(ollama pull qwen2.5vl:7b)."
+        )
+        return
+
+    await context.bot.send_chat_action(chat_id=chat.id, action=ChatAction.UPLOAD_DOCUMENT)
+    await message.reply_text(f"Разбираю «{doc.file_name}» и готовлю сводку, минутку…")
+
+    try:
+        result = await asyncio.to_thread(summarizer.summarize, doc)
+    except Exception as e:
+        logger.exception("Ошибка при формировании сводки: %s", e)
+        await message.reply_text("Не получилось собрать сводку. Загляни в логи, пожалуйста.")
+        return
+
+    caption = (result.get("text_summary") or "Готова сводка по документу.")[:900]
+    summary_path = result["summary_path"]
+    try:
+        with open(summary_path, "rb") as f:
+            await message.reply_document(
+                document=f, filename=Path(summary_path).name, caption=caption
+            )
+    except Exception as e:
+        logger.exception("Ошибка отправки файла сводки: %s", e)
+        await message.reply_text(caption)
+
+
+async def _handle_registry_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.message
+    chat = message.chat
+    registry_path = settings.DATA_DIR / "Реестр.xlsx"
+    if not registry_path.exists():
+        await message.reply_text(
+            "Общий реестр пока пуст. Он наполняется, когда просят сводки по документам."
+        )
+        return
+    await context.bot.send_chat_action(chat_id=chat.id, action=ChatAction.UPLOAD_DOCUMENT)
+    with open(registry_path, "rb") as f:
+        await message.reply_document(
+            document=f, filename="Реестр.xlsx", caption="Общий реестр документов."
+        )
