@@ -324,7 +324,10 @@ Intent Detection → Response Generation → Telegram Reply
   otherwise answers via LLM.
 - Proactive alerts: daily digest (10:00), critical objects (16:00) and cron tasks
   via `AlertDispatcher` started in `post_init` / stopped in `post_shutdown`.
-- Commands: `/start`, `/help`, `/status`.
+- Dialog memory: `ConversationMemory` keeps recent `user`/`assistant` turns per chat
+  (bounded by turns/length) and feeds them into `/v1/chat/completions`; any plain text
+  is handled without commands.
+- Commands: `/start`, `/help`, `/status`, `/here`, `/reset` (clears dialog context).
 - **Safety**: `TELEGRAM_ALLOWLIST_ONLY=true` (default) — outgoing messages go only
   to `TELEGRAM_OWNER_CHAT_ID`; all other recipients are blocked and logged. If the
   owner is unset, nothing is sent. Use `/here` to discover your chat_id.
@@ -798,11 +801,11 @@ C:\mia\
 │   ├── test_temporal_module.py    # Temporal module (33 tests)
 │   ├── test_delegation_accuracy.py    # Delegation engine / accuracy contour (29 tests)
 │   ├── test_document_pipeline.py      # Parsers, extractor, RAG ingestion (93 tests)
-│   ├── test_llm_clients.py            # Ollama client / llama.cpp manager (38 tests)
+│   ├── test_llm_clients.py            # Ollama client / llama.cpp manager (40 tests)
 │   ├── test_stub_integrations.py      # De-stubbed integrations (25 tests)
 │   ├── test_llama_cpp_client.py       # llama.cpp client (23 tests)
 │   ├── test_telegram_sender.py        # TelegramSender adapter (9 tests)
-│   ├── test_bot_assistant.py          # PM OS assistant orchestrator (11 tests)
+│   ├── test_bot_assistant.py          # PM OS assistant + dialog memory (19 tests)
 │   ├── test_alert_dispatcher_wiring.py # PM OS alert wiring (3 tests)
 │   ├── test_seed_roles.py             # system_roles seeding (4 tests)
 │   ├── test_llama_embeddings.py       # llama.cpp ChromaDB embeddings (6 tests)

@@ -12,6 +12,14 @@ class FakeLlama:
         self.reply = reply
         self.error = error
         self.calls = []
+        self.messages_seen = []
+
+    def chat(self, messages, **kwargs):
+        self.messages_seen.append(messages)
+        self.calls.append(("chat", messages[-1]["content"]))
+        if self.error:
+            raise self.error
+        return self.reply
 
     def complete(self, system, user, **kwargs):
         self.calls.append((system, user))
@@ -158,3 +166,85 @@ class TestIntercept:
         d._pending = [{"question_id": 5}]
         d._intercept = True
         assert a.handle_text("что-то", user_id=None) == "ответ модели"
+
+
+class TestConversationMemory:
+    def test_trim_by_turns(self):
+        from app.bot.assistant import ConversationMemory
+
+        m = ConversationMemory(max_turns=2, max_chars=100000)
+        for i in range(5):
+            m.append("c", f"u{i}", f"a{i}")
+        turns = m.get("c")
+        assert len(turns) == 4
+        assert turns[0]["content"] == "u3"
+        assert turns[-1]["content"] == "a4"
+
+    def test_trim_by_chars(self):
+        from app.bot.assistant import ConversationMemory
+
+        m = ConversationMemory(max_turns=50, max_chars=20)
+        m.append("c", "x" * 15, "y" * 15)
+        m.append("c", "z", "w")
+        turns = m.get("c")
+        assert [t["content"] for t in turns] == ["z", "w"]
+
+    def test_clear(self):
+        from app.bot.assistant import ConversationMemory
+
+        m = ConversationMemory()
+        m.append("c", "u", "a")
+        m.clear("c")
+        assert m.get("c") == []
+
+
+class TestHistory:
+    def test_history_passed_to_llm(self):
+        from app.bot.assistant import PmOsAssistant
+
+        llama = FakeLlama()
+        a = PmOsAssistant(llm=llama, delegation=None)
+        a.handle_text("привет", chat_id=1)
+        a.handle_text("а помнишь?", chat_id=1)
+        second = llama.messages_seen[-1]
+        assert [m["role"] for m in second] == ["system", "user", "assistant", "user"]
+        assert second[1]["content"] == "привет"
+        assert second[2]["content"] == "ответ модели"
+
+    def test_history_scoped_per_chat(self):
+        from app.bot.assistant import PmOsAssistant
+
+        llama = FakeLlama()
+        a = PmOsAssistant(llm=llama, delegation=None)
+        a.handle_text("привет", chat_id=1)
+        a.handle_text("другой чат", chat_id=2)
+        assert llama.messages_seen[-1][1]["content"] == "другой чат"
+        assert len(llama.messages_seen[-1]) == 2
+
+    def test_error_not_stored_in_history(self):
+        from app.bot.assistant import PmOsAssistant
+
+        llama = FakeLlama(error=LlamaCppError("down"))
+        a = PmOsAssistant(llm=llama, delegation=None)
+        a.handle_text("привет", chat_id=1)
+        assert a.memory.get("1") == []
+
+    def test_clear_history(self):
+        from app.bot.assistant import PmOsAssistant
+
+        llama = FakeLlama()
+        a = PmOsAssistant(llm=llama, delegation=None)
+        a.handle_text("привет", chat_id=1)
+        a.clear_history(1)
+        a.handle_text("снова привет", chat_id=1)
+        assert len(llama.messages_seen[-1]) == 2
+
+    def test_fallback_when_no_chat_method(self):
+        from app.bot.assistant import PmOsAssistant
+
+        class OnlyComplete:
+            def complete(self, system, user, **kwargs):
+                return "ok"
+
+        a = PmOsAssistant(llm=OnlyComplete(), delegation=None)
+        assert a.handle_text("привет", chat_id=1) == "ok"

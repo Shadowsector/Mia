@@ -183,6 +183,10 @@
   `LlamaCppManager.start_server(embeddings=True, pooling="cls")`; настройки `LLAMA_EMBED_URL`/
   `EMBED_BACKEND`; автозапуск embedding-сервера из GUI (CPU, 8081, пропуск если уже
   запущен); проверено вживую add/search + автозапуск (dim 1024); +13 тестов, всего 652)
+- [x] 8.33 Память диалога в боте - COMPLETED
+  (`ConversationMemory` в app/bot/assistant.py: контекст по чатам, ограничение по
+  ходам/длине; `_chat` шлёт историю в llama.cpp; команда `/reset`; проверено вживую;
+  +8 тестов, всего 660)
 
 ## [✅] ЭТАП 9: Критические исправления (RFC: rfc_mia_fixes.md)
 - RFC: docs/rfc_mia_fixes.md

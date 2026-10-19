@@ -48,6 +48,14 @@
     автозапуск стартует сервер и отдаёт dim 1024. Тесты: `test_llama_embeddings.py` (6),
     батч-эмбеддинги в `test_llama_cpp_client.py` (+5), `--pooling`/`--embedding` в
     `test_llm_clients.py` (+2).
+- **Память диалога в боте** (+8 тестов, всего 660):
+  - `ConversationMemory` в `app/bot/assistant.py` — краткосрочный контекст по чатам
+    (последние реплики, ограничение по числу ходов и длине). `PmOsAssistant._chat`
+    передаёт историю в `/v1/chat/completions` (messages), ответы не кэшируются при
+    ошибке LLM. `clear_history(chat_id)`.
+  - Команда `/reset` (сброс контекста) в `app/bot/main.py`; обычный текст по-прежнему
+    обрабатывается без команд. Проверено вживую: модель помнит данные из прошлой
+    реплики. Тесты: `test_bot_assistant.py` (+8, `TestConversationMemory`/`TestHistory`).
 - **Замена заглушек реальной интеграцией** (item 2; тесты — `tests/test_stub_integrations.py`, 25):
   - `DelegationEngine` — LLM-парсинг запроса (`PromptTemplates.delegation_extraction_prompt`),
     классификация ответа vs трёп (`delegation_answer_classifier_prompt`), создание задачи
@@ -209,7 +217,7 @@
   актуальных версий (`status: actual`).
 
 ### Test results
-- **652 passed** (было 317 в начале дня; +335 тестов): покрытие 15 модулей (+228),
+- **660 passed** (было 317 в начале дня; +343 теста): покрытие 15 модулей (+228),
   интеграционные тесты de-stub (+25), тесты cron-логики (+10),
   runtime-интеграция PM OS/llama.cpp/Telegram (+46), allowlist/seed/`/here` (+13),
-  эмбеддинги/RAG на llama.cpp + автозапуск (+13).
+  эмбеддинги/RAG на llama.cpp + автозапуск (+13), память диалога (+8).

@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
 from app.modules.llm.llama_cpp_client import LlamaCppClient, LlamaCppError
 
@@ -32,14 +32,49 @@ _LLM_FALLBACK = (
 )
 
 
+class ConversationMemory:
+    """Краткосрочная память диалога по чатам (в процессе, без БД).
+
+    Хранит последние реплики ``user``/``assistant`` для каждого чата, чтобы
+    модель видела контекст. Ограничена по числу реплик и по суммарной длине,
+    чтобы не раздувать контекст llama.cpp.
+    """
+
+    def __init__(self, max_turns: int = 8, max_chars: int = 6000) -> None:
+        self.max_turns = max_turns
+        self.max_chars = max_chars
+        self._store: Dict[str, List[Dict[str, str]]] = {}
+
+    def get(self, key: str) -> List[Dict[str, str]]:
+        return list(self._store.get(key, []))
+
+    def append(self, key: str, user_text: str, assistant_text: str) -> None:
+        turns = self._store.setdefault(key, [])
+        turns.append({"role": "user", "content": user_text})
+        turns.append({"role": "assistant", "content": assistant_text})
+        self._trim(turns)
+        self._store[key] = turns
+
+    def clear(self, key: str) -> None:
+        self._store.pop(key, None)
+
+    def _trim(self, turns: List[Dict[str, str]]) -> None:
+        if len(turns) > self.max_turns * 2:
+            del turns[: len(turns) - self.max_turns * 2]
+        while len(turns) > 2 and sum(len(m["content"]) for m in turns) > self.max_chars:
+            del turns[:2]
+
+
 class PmOsAssistant:
     def __init__(
         self,
         llm: Optional[LlamaCppClient] = None,
         delegation: Any = None,
+        memory: Optional[ConversationMemory] = None,
     ) -> None:
         self.llm = llm or LlamaCppClient()
         self.delegation = delegation
+        self.memory = memory or ConversationMemory()
 
     # ------------------------------------------------------------------
     # Публичная точка входа
@@ -64,7 +99,23 @@ class PmOsAssistant:
         if delegated is not None:
             return delegated
 
-        return self._chat(text, chat_title=chat_title, username=username)
+        key = (
+            str(chat_id)
+            if chat_id is not None
+            else (str(user_id) if user_id is not None else "__default__")
+        )
+        return self._chat(
+            text, memory_key=key, chat_title=chat_title, username=username
+        )
+
+    def clear_history(self, chat_id: Optional[int] = None) -> None:
+        """Сбросить память диалога (для всего или одного чата)."""
+        if chat_id is None:
+            self.memory = ConversationMemory(
+                max_turns=self.memory.max_turns, max_chars=self.memory.max_chars
+            )
+        else:
+            self.memory.clear(str(chat_id))
 
     # ------------------------------------------------------------------
     # Шаги
@@ -131,14 +182,37 @@ class PmOsAssistant:
             f"«{request.question_context}» (№{question_id})."
         )
 
-    def _chat(self, text: str, chat_title: str = "", username: str = "") -> str:
+    def _chat(
+        self,
+        text: str,
+        memory_key: str = "__default__",
+        chat_title: str = "",
+        username: str = "",
+    ) -> str:
         system = SYSTEM_PROMPT
         if chat_title:
             system += f"\n\nЧат: {chat_title}."
         if username:
             system += f"\nСобеседник: {username}."
+
+        messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
+        messages.extend(self.memory.get(memory_key))
+        messages.append({"role": "user", "content": text})
+
         try:
-            return self.llm.complete(system, text) or _LLM_FALLBACK
+            reply = self._invoke_llm(messages, system, text) or _LLM_FALLBACK
         except LlamaCppError as e:
             logger.error("LLM chat failed: %s", e)
             return _LLM_FALLBACK
+
+        if reply and reply != _LLM_FALLBACK:
+            self.memory.append(memory_key, text, reply)
+        return reply
+
+    def _invoke_llm(
+        self, messages: List[Dict[str, str]], system: str, text: str
+    ) -> str:
+        chat = getattr(self.llm, "chat", None)
+        if callable(chat):
+            return chat(messages)
+        return self.llm.complete(system, text)

@@ -113,8 +113,9 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Что я умею:\n"
         "• отвечать на вопросы по проектам и документам;\n"
         "• делегировать: «спроси у Светы, когда будет смета по объекту X»;\n"
-        "• принимать ответы на делегированные вопросы.\n"
-        "Команды: /start, /help, /status, /here."
+        "• принимать ответы на делегированные вопросы;\n"
+        "• помнить контекст диалога (сбросить — /reset).\n"
+        "Команды: /start, /help, /status, /here, /reset."
     )
 
 
@@ -145,6 +146,13 @@ async def cmd_here(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             user_id=user.id if user else "?",
         )
     )
+
+
+async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    assistant: PmOsAssistant = context.application.bot_data["assistant"]
+    chat = update.effective_chat
+    assistant.clear_history(chat.id if chat else None)
+    await update.message.reply_text("Контекст диалога очищен.")
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -204,6 +212,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("help", cmd_help))
     application.add_handler(CommandHandler("status", cmd_status))
     application.add_handler(CommandHandler("here", cmd_here))
+    application.add_handler(CommandHandler("reset", cmd_reset))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text)
     )
