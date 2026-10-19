@@ -10,7 +10,7 @@ from pathlib import Path
 from datetime import datetime
 
 from app.modules.rag.chroma_manager import ChromaManager
-from app.modules.document_parser import DocumentParser
+from app.modules.document_parser import DocumentParserFactory
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class DocumentIngestor:
             chroma_manager: ChromaManager instance (creates default if None)
         """
         self.chroma_manager = chroma_manager or ChromaManager()
-        self.document_parser = DocumentParser()
+        self.document_parser = DocumentParserFactory()
         
         # Chunk size in characters
         self.chunk_size = 1000

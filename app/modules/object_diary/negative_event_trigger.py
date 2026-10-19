@@ -132,8 +132,8 @@ class NegativeEventTrigger:
                 # Get unresolved questions
                 cursor.execute("""
                     SELECT question_id, project_id, question_type, created_at
-                    FROM questions
-                    WHERE status IN ('pending', 'suspended')
+                    FROM questions_gateway
+                    WHERE status NOT IN ('answered', 'resolved')
                     ORDER BY created_at
                 """)
                 

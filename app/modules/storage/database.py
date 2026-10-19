@@ -512,6 +512,44 @@ def initialize_database():
             )
         """)
         
+        # Object Events table (события объекта: дедлайны, изменения, документы)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS object_events (
+                event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                object_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                event_date DATE NOT NULL,
+                deadline_date DATE,
+                description TEXT,
+                status TEXT DEFAULT 'open',
+                metadata TEXT DEFAULT '{}',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_object_events_object
+            ON object_events(object_id, event_date)
+        """)
+
+        # Invoices / payments table (финансовые поступления и счета)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS invoices (
+                invoice_id TEXT PRIMARY KEY,
+                object_id TEXT NOT NULL,
+                amount REAL NOT NULL,
+                date DATE NOT NULL,
+                status TEXT DEFAULT 'pending',
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_invoices_object
+            ON invoices(object_id, date)
+        """)
+
         # Virtual Documents table (Shadow Document pattern)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS virtual_documents (

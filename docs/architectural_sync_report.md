@@ -1,6 +1,7 @@
 # Architectural Sync Report
 
 **Date**: 13 сентября 2026  
+**Updated**: 19 октября 2026 — статусы синхронизированы с фактическим состоянием  
 **Purpose**: Resolve critical architectural contradictions and introduce Chronological Project Ledger feature
 
 ---
@@ -60,12 +61,12 @@ CREATE INDEX idx_ledger_chronology ON project_ledger (project_id, event_timestam
 - `architecture.md` - Added project_ledger table schema under Data Layer Architecture
 - `architecture.md` - Added Ledger concept explanation
 - `ai.md` - Added LedgerEventSchema with modern Pydantic v2 syntax
-- `Todo.md` - Added ЭТАП 7.10 (Chronological State Replay Engine) - DEFERRED
-- `Todo.md` - Added ЭТАП 7.11 (Implicit Override Detection) - DEFERRED
+- `Todo.md` - Added ЭТАП 7.10 (Chronological State Replay Engine) - ✅ COMPLETED
+- `Todo.md` - Added ЭТАП 7.11 (Implicit Override Detection) - ✅ COMPLETED
 
 ---
 
-### 4. Pydantic Modernization 🔄 IN PROGRESS
+### 4. Pydantic Modernization ✅ COMPLETED
 
 **Problem**: Inconsistent Pydantic v2 syntax (old class-based Config vs modern ConfigDict).
 
@@ -75,8 +76,8 @@ CREATE INDEX idx_ledger_chronology ON project_ledger (project_id, event_timestam
 - `ai.md` - Added ConfigDict import to all schema sections
 - `ai.md` - Added LedgerEventSchema with modern syntax
 - `ai.md` - Replaced all `class Config:` with `model_config = ConfigDict(` (13 instances)
-- `Todo.md` - Marked 6.8 as IN PROGRESS
-- `Todo.md` - Added 6.11 (Modernize Pydantic Syntax) - DEFERRED
+- `Todo.md` - Marked 6.8 as ✅ COMPLETED
+- `Todo.md` - Added 6.11 (Modernize Pydantic Syntax) - ✅ COMPLETED
 
 ---
 
@@ -123,14 +124,15 @@ CREATE INDEX idx_ledger_chronology ON project_ledger (project_id, event_timestam
 
 ## 🚀 Next Steps
 
-### Immediate (Pending):
-1. **Test project_ledger table creation** - Ensure schema passes all existing 96 tests
-2. **Complete Pydantic modernization** - Migrate remaining schemas to ConfigDict
-3. **Implement Safe Tool Generation Layer** - Create MiaTool base class
+### Completed (since 2026-09-13):
+1. ✅ **Test project_ledger table creation** — покрыто тестами (`tests/test_state_replay_overrides.py`)
+2. ✅ **Complete Pydantic modernization** — class-based `Config` отсутствует, все схемы на `ConfigDict`
+3. ✅ **Implement Safe Tool Generation Layer** — `app/core/safe_tool_layer.py` + 31 тест
+4. ✅ **Chronological State Replay Engine** — `app/modules/rag/state_replay.py` (7.14/9.6)
+5. ✅ **Implicit Override Detection** — `app/modules/google_drive/override_detector.py` (7.15/9.7)
 
-### Deferred (Planned):
-4. **Chronological State Replay Engine** - Build backend replay system
-5. **Implicit Override Detection** - Parser for document revision tracking
+### Remaining (Deferred):
+6. ⏸️ **PostgreSQL Migration (9.11)** — требует внешнего setup
 
 ---
 
@@ -139,9 +141,9 @@ CREATE INDEX idx_ledger_chronology ON project_ledger (project_id, event_timestam
 1. ✅ VRAM & Model Execution Contradiction - RESOLVED
 2. ✅ AnythingLLM Dependency - DEPRECATED
 3. ✅ Chronological State Tracking - LEDGER ADDED
-4. ✅ Pydantic Syntax Inconsistency - IN PROGRESS
+4. ✅ Pydantic Syntax Inconsistency - COMPLETED
 5. ✅ Sequential Document Processing - POLICY ADDED
 
 ---
 
-**Status**: Architectural sync complete. Ready for project_ledger table testing.
+**Status**: Architectural sync complete. All immediate tasks completed; only PostgreSQL migration (9.11) remains deferred.

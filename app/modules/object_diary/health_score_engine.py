@@ -145,7 +145,7 @@ class HealthScoreEngine:
                 cursor.execute("""
                     SELECT COUNT(*) as count
                     FROM constraints
-                    WHERE object_id = ? AND status = 'blocking'
+                    WHERE object_id = ? AND status = 'NOT_SATISFIED'
                 """, (object_id,))
                 
                 row = cursor.fetchone()

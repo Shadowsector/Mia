@@ -84,13 +84,14 @@ class IntentClassifier:
         """
         text_lower = text.lower()
         
-        # Score each intent type
+        # Score each intent type. Longer (more specific) keywords weigh more,
+        # so "запусти бота" beats the generic "запусти".
         scores = {}
         for intent_type, keywords in self.INTENT_KEYWORDS.items():
             score = 0
             for keyword in keywords:
                 if keyword in text_lower:
-                    score += 1
+                    score += len(keyword)
             scores[intent_type] = score
         
         # Find best match

@@ -25,7 +25,7 @@ class TelegramDistiller:
     # Risk-related keywords for construction projects
     RISK_KEYWORDS = {
         'material_shortage': [
-            'нет материала', 'нет материала', 'не приехал', 'не приехали',
+            'нет материала', 'не приехал', 'не приехали',
             'отсутствует', 'закончился', 'закончились', 'не доставлен',
             'не доставлены', 'нет', 'нехватка', 'дефицит'
         ],
@@ -52,6 +52,36 @@ class TelegramDistiller:
     def __init__(self):
         """Initialize Telegram Distiller."""
         pass
+
+    def _resolve_chat_id(self, object_id: str) -> Optional[int]:
+        """
+        Resolve the Telegram chat linked to an object.
+
+        Objects do not store a chat ID directly, so the link is resolved
+        through the projects table: either the object ID matches a project ID
+        or it matches the project's Google Drive folder ID.
+
+        Args:
+            object_id: Object ID
+
+        Returns:
+            Telegram chat ID or None if no project is linked
+        """
+        try:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT telegram_chat_id FROM projects
+                    WHERE project_id = ? OR google_drive_folder_id = ?
+                    LIMIT 1
+                """, (object_id, object_id))
+
+                row = cursor.fetchone()
+                return row['telegram_chat_id'] if row else None
+
+        except Exception as e:
+            logger.error(f"Error resolving Telegram chat for {object_id}: {e}")
+            return None
     
     def detect_risk_keywords(self, text: str) -> Dict[str, Any]:
         """
@@ -64,24 +94,32 @@ class TelegramDistiller:
             Risk detection result
         """
         text_lower = text.lower()
-        
+
         detected_risks = []
         risk_scores = {}
-        
+
         for risk_type, keywords in self.RISK_KEYWORDS.items():
+            matched = []
             for keyword in keywords:
-                if keyword in text_lower:
-                    detected_risks.append({
-                        'risk_type': risk_type,
-                        'keyword': keyword
-                    })
-                    # Assign risk score based on severity
-                    if risk_type in ['material_shortage', 'payment_issue']:
-                        risk_scores[risk_type] = 10  # Highest priority
-                    elif risk_type in ['schedule_delay', 'quality_issue']:
-                        risk_scores[risk_type] = 7  # High priority
-                    else:
-                        risk_scores[risk_type] = 5  # Medium priority
+                if keyword in text_lower and not any(
+                    keyword in existing for existing in matched
+                ):
+                    matched.append(keyword)
+
+            for keyword in matched:
+                detected_risks.append({
+                    'risk_type': risk_type,
+                    'keyword': keyword
+                })
+
+            if matched:
+                # Assign risk score based on severity
+                if risk_type in ['material_shortage', 'payment_issue']:
+                    risk_scores[risk_type] = 10  # Highest priority
+                elif risk_type in ['schedule_delay', 'quality_issue']:
+                    risk_scores[risk_type] = 7  # High priority
+                else:
+                    risk_scores[risk_type] = 5  # Medium priority
         
         return {
             'has_risk': len(detected_risks) > 0,
@@ -135,35 +173,41 @@ class TelegramDistiller:
         """
         timeline = []
         
-        # Get Telegram messages
+        # Get Telegram messages for the chat linked to this object
         if include_telegram:
             try:
-                with get_db_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                        SELECT message_id, user_id, username, text, timestamp
-                        FROM telegram_messages
-                        WHERE object_id = ?
-                        ORDER BY timestamp
-                    """, (object_id,))
-                    
-                    for row in cursor.fetchall():
-                        message_text = row['text']
+                chat_id = self._resolve_chat_id(object_id)
+                if chat_id is None:
+                    logger.debug(
+                        f"No Telegram chat linked to object {object_id}, skipping messages"
+                    )
+                else:
+                    with get_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            SELECT message_id, user_id, username, message_text, timestamp
+                            FROM telegram_messages
+                            WHERE telegram_chat_id = ?
+                            ORDER BY timestamp
+                        """, (chat_id,))
                         
-                        # Detect risk keywords
-                        risk_detection = self.detect_risk_keywords(message_text)
-                        
-                        timeline.append({
-                            'source': 'telegram',
-                            'event_type': 'message',
-                            'timestamp': row['timestamp'],
-                            'message_id': row['message_id'],
-                            'user_id': row['user_id'],
-                            'username': row['username'],
-                            'content': message_text,
-                            'risk_detection': risk_detection,
-                            'priority': risk_detection['max_risk_score'] if risk_detection['has_risk'] else 5
-                        })
+                        for row in cursor.fetchall():
+                            message_text = row['message_text'] or ''
+                            
+                            # Detect risk keywords
+                            risk_detection = self.detect_risk_keywords(message_text)
+                            
+                            timeline.append({
+                                'source': 'telegram',
+                                'event_type': 'message',
+                                'timestamp': row['timestamp'],
+                                'message_id': row['message_id'],
+                                'user_id': row['user_id'],
+                                'username': row['username'],
+                                'content': message_text,
+                                'risk_detection': risk_detection,
+                                'priority': risk_detection['max_risk_score'] if risk_detection['has_risk'] else 5
+                            })
                         
             except Exception as e:
                 logger.error(f"Error getting Telegram messages: {e}")
@@ -235,8 +279,20 @@ class TelegramDistiller:
         deduplicated = []
         
         for event in timeline:
-            # Create a hash key for deduplication
-            key = f"{event['source']}:{event['event_type']}:{event['timestamp']}"
+            # Create a hash key for deduplication. Include the source-specific
+            # identifier so distinct messages/documents with identical
+            # timestamps are not collapsed into one.
+            identifier = (
+                event.get('message_id')
+                or event.get('document_id')
+                or event.get('event_id')
+                or event.get('content')
+                or event.get('description')
+            )
+            key = (
+                f"{event['source']}:{event['event_type']}:"
+                f"{event['timestamp']}:{identifier}"
+            )
             
             if key not in seen:
                 seen.add(key)
@@ -262,10 +318,16 @@ class TelegramDistiller:
         }
         
         for event in timeline:
-            event['priority'] = source_weights.get(event['source'], 0.5)
-        
-        # Sort by priority (descending), then timestamp
-        timeline.sort(key=lambda x: (-x['priority'], x['timestamp']))
+            event['source_weight'] = source_weights.get(event['source'], 0.5)
+
+        # Sort by source reliability (descending), then risk priority, then timestamp
+        timeline.sort(
+            key=lambda x: (
+                -x['source_weight'],
+                -x.get('priority', 0),
+                x['timestamp'],
+            )
+        )
         
         return timeline
     

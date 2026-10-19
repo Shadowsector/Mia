@@ -14,7 +14,7 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
-from app.modules.document_parser import DocumentParser
+from app.modules.document_parser import DocumentParserFactory
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class DocumentInfoExtractor:
     
     def __init__(self):
         """Initialize Document Info Extractor."""
-        self.document_parser = DocumentParser()
+        self.document_parser = DocumentParserFactory()
     
     def extract_financials(self, text: str) -> Dict[str, Any]:
         """
@@ -281,6 +281,7 @@ class DocumentInfoExtractor:
             'success': True,
             'file_path': str(file_path),
             'file_name': file_path.name,
+            'raw_text': text,
             'financials': self.extract_financials(text),
             'dates': self.extract_dates(text),
             'materials': self.extract_materials(text),

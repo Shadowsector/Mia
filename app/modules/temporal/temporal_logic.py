@@ -1,6 +1,6 @@
 """Temporal Logic Manager - Absolute Time Injection and Relative Date Parsing - RFC v1.9"""
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import json

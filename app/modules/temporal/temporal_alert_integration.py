@@ -27,7 +27,7 @@ class TemporalAlertIntegration:
         """Остановить интегрированную систему"""
         self.alert_dispatcher.stop()
     
-    def process_cron_tasks_with_alerts(self) -> List[Dict[str, Any]]:
+    def process_cron_tasks_with_alerts(self) -> Dict[str, Any]:
         """
         Обработать cron задачи и сгенерировать алерты
         Проверка NegativeEventTrigger через cron

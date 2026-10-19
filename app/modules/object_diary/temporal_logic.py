@@ -47,25 +47,21 @@ class TemporalLogic:
         
         # Parse quantity and unit
         import re
-        match = re.match(r'(\d+)\s*(?:дня|дней|day|days|days?)\s*(?:неделя|week|weeks|недели)?', relative_time)
-        if match:
-            days = int(match.group(1))
-            if 'недел' in relative_time or 'week' in relative_time:
-                days *= 7
-            return reference_date + timedelta(days=days)
+        match = re.search(r'(\d+)', relative_time)
+        if not match:
+            return reference_date
         
-        match = re.match(r'(\d+)\s*(?:месяц|month|months|месяца)?', relative_time)
-        if match:
-            months = int(match.group(1))
-            return reference_date + timedelta(days=months * 30)  # Approximate
+        quantity = int(match.group(1))
         
-        # Default: assume days
-        match = re.match(r'(\d+)', relative_time)
-        if match:
-            days = int(match.group(1))
-            return reference_date + timedelta(days=days)
+        if 'недел' in relative_time or 'week' in relative_time:
+            return reference_date + timedelta(weeks=quantity)
+        if 'месяц' in relative_time or 'month' in relative_time:
+            return reference_date + timedelta(days=quantity * 30)  # Approximate
+        if 'год' in relative_time or 'year' in relative_time:
+            return reference_date + timedelta(days=quantity * 365)  # Approximate
         
-        return reference_date
+        # Days (explicit or default)
+        return reference_date + timedelta(days=quantity)
     
     def calculate_schedule_variance(
         self,

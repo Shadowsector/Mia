@@ -109,16 +109,16 @@ class DiaryManager:
         if not update_fields:
             return False
         
+        json_fields = {'subcontractors', 'sub_contracts', 'custom_fields', 'rag_metadata'}
+        
         set_clause = ", ".join([f"{field} = ?" for field in update_fields.keys()])
-        values = list(update_fields.values())
+        values = [
+            json.dumps(value) if field in json_fields and isinstance(value, (dict, list)) else value
+            for field, value in update_fields.items()
+        ]
         
-        # Convert dict fields to JSON
-        for field in ['subcontractors', 'sub_contracts', 'custom_fields', 'rag_metadata']:
-            if field in update_fields and isinstance(update_fields[field], (dict, list)):
-                values[values.index(update_fields[field])] = json.dumps(update_fields[field])
-        
-        values.append(diary_id)
         values.append(datetime.now())
+        values.append(diary_id)
         
         with get_db_connection() as conn:
             cursor = conn.cursor()

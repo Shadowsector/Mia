@@ -548,7 +548,7 @@ class MiaGUI:
             # Import Ollama client
             sys.path.insert(0, str(Path(__file__).parent.parent))
             from app.modules.llm.ollama_client import OllamaClient
-            from app.modules.object_diary.temporal_logic import TemporalLogic
+            from app.modules.temporal.temporal_logic import TemporalLogicManager
             
             # Initialize client
             client = OllamaClient(base_url="http://localhost:11434")

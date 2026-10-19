@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 import re
 
-from app.modules.document_parser import DocumentParser
+from app.modules.document_parser import DocumentParserFactory
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class ContractAnalyzer:
     
     def __init__(self):
         """Initialize Contract Analyzer."""
-        self.document_parser = DocumentParser()
+        self.document_parser = DocumentParserFactory()
     
     def analyze_contract(self, file_path: str) -> Dict[str, Any]:
         """
@@ -55,19 +55,19 @@ class ContractAnalyzer:
         # Extract contract number with citation
         contract_number, cn_citation = self._extract_with_citation(
             text,
-            r'(?:договор|контракт|contract)[№\s-]*(\d+[/\-A-Za-z\d]*)'
+            r'(?:договор|контракт|contract)[№\s-]*(\d+[/\-A-Za-zА-Яа-яЁё\d]*)'
         )
         
         # Extract contract date with citation
         contract_date, cd_citation = self._extract_with_citation(
             text,
-            r'(\d{1,2})\.(\d{1,2})\.(\d{4})'
+            r'\d{1,2}\.\d{1,2}\.\d{4}'
         )
         
         # Extract contract amount with citation
         contract_amount, ca_citation = self._extract_with_citation(
             text,
-            r'(\d+[.,]\d+)\s*(?:руб|р\.|₽)'
+            r'(\d[\d\s,.]*[.,]\d+)\s*(?:руб|р\.|₽)'
         )
         
         # Extract customer with citation

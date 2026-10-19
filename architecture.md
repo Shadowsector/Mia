@@ -253,6 +253,12 @@ Recommendation → G8 Approval → Remediation Application
 - `doctor_diagnoses`: Doctor observer diagnoses
 - `telegram_messages`: Telegram message log
 - `project_ledger`: Chronological state-machine ledger for document versions, TU amendments, and chat updates
+- `objects` / `diary_events`: Object diaries (RFC Object Diary v1.9)
+- `constraints` / `constraint_history` / `constraint_dependencies`: Constraint network
+- `virtual_documents`: Expected-but-not-yet-received documents
+- `object_events`: Diary event stream (deadlines, risks, status changes)
+- `invoices`: Financial ledger entries per object
+- `document_links`: Document-to-object links with citation metadata
 
 **Project Ledger Schema**:
 ```sql
@@ -318,6 +324,32 @@ Intent Detection → Response Generation → Telegram Reply
 Message → Database Storage → Vector Embedding → 
 Semantic Index → RAG Retrieval
 ```
+
+### 10. Object Diary (`app/modules/object_diary/`)
+
+**Purpose**: Per-object event diary, constraints, risk scoring and temporal reasoning
+(RFC Object Diary v1.10, Jobs #1–#33).
+
+**Modules** (17):
+- `diary_manager.py` — CRUD for objects and `diary_events`, event overrides
+- `constraint_manager.py` — Lean Construction constraint network
+  (`NOT_SATISFIED` / `SATISFIED` / `WAIVED`), action gating via `can_proceed()`
+- `health_score_engine.py` — cumulative risk: schedule, constraint, budget, silence
+- `temporal_logic.py` — deadline parsing, schedule variance, burn rate
+- `negative_event_trigger.py` — silence detection, overdue deadlines, question timeouts
+- `telegram_distiller.py` — merges Telegram + documents + events into one timeline
+- `document_linker.py`, `contract_analyzer.py`, `virtual_documents.py` — document pipeline
+- `expert_teacher.py` — Human-in-the-loop lessons (Live Ontology of Deviations)
+- `role_router.py`, `inbox_manager.py`, `knowledge_graph.py`, `pre_object_tracker.py`,
+  `intent_classifier.py`, `constraint_health_integration.py`, `alert_dispatcher.py`
+
+**Data**: `objects`, `diary_events`, `constraints`, `constraint_history`,
+`constraint_dependencies`, `virtual_documents`, `object_events`, `invoices`,
+`document_links`, `object_edges`, `expert_lessons`, `inbox_items`.
+
+**Temporal module** (`app/modules/temporal/`) is separate: `TemporalLogicManager`
+(Absolute Time Injection, relative dates, cron tasks), `AlertDispatcher` (APScheduler),
+`TemporalAlertIntegration`.
 
 ## Data Flow Architecture
 
@@ -652,10 +684,11 @@ ollama pull bge-m3
 
 ### Technical Debt
 - ~~Remove deprecated AnythingLLM references~~ (COMPLETED - native Hybrid RAG handles exact construction queries, tables, and document structures without external web-service overhead)
-- Modernize remaining Pydantic schemas to ConfigDict
+- ~~Modernize remaining Pydantic schemas to ConfigDict~~ (COMPLETED - all schemas use `model_config = ConfigDict(...)`)
 - ~~Resolve single-model vs multiple day/night model contradictions~~ (COMPLETED - explicit multi-model pipeline: DAYTIME qwen2.5:14b-instruct, NIGHTTIME qwen2.5-vl:7b)
 - Improve error recovery mechanisms
 - Add comprehensive integration tests
+- PostgreSQL migration for transactional load (DEFERRED, requires external setup — Todo.md 9.11)
 
 ## File Structure
 
@@ -668,6 +701,20 @@ C:\mia\
 │   │   ├── storage/
 │   │   │   ├── database.py        # SQLite database layer
 │   │   │   └── questions_gateway.py # Human intervention
+│   │   ├── object_diary/          # RFC Object Diary v1.9 (17 modules)
+│   │   │   ├── diary_manager.py
+│   │   │   ├── constraint_manager.py
+│   │   │   ├── health_score_engine.py
+│   │   │   ├── temporal_logic.py
+│   │   │   ├── telegram_distiller.py
+│   │   │   └── ...
+│   │   ├── temporal/              # Absolute Time Injection + cron tasks
+│   │   │   ├── temporal_logic.py
+│   │   │   ├── alert_dispatcher.py
+│   │   │   └── temporal_alert_integration.py
+│   │   ├── rag/                   # ChromaDB RAG (state replay, ingest)
+│   │   ├── google_drive/          # OAuth, scanning, classification
+│   │   ├── financial/             # Ledger integration
 │   │   ├── doctor/
 │   │   │   └── observer.py        # Health monitoring
 │   │   └── vram_policy.py          # GPU memory management
@@ -696,7 +743,12 @@ C:\mia\
 │   ├── test_schemas.py            # Schema validation tests
 │   ├── test_queue.py              # Queue and worker tests
 │   ├── test_questions.py          # Questions gateway tests
-│   └── test_autonomous_health.py  # Health monitoring tests
+│   ├── test_autonomous_health.py  # Health monitoring tests
+│   ├── test_safe_tool_layer.py    # Semantic tools (31 tests)
+│   ├── test_state_replay_overrides.py # Ledger replay / overrides (17 tests)
+│   ├── test_document_classifier.py    # Google Drive classifier (31 tests)
+│   ├── test_object_diary.py       # Object Diary modules (119 tests)
+│   └── test_temporal_module.py    # Temporal module (23 tests)
 ├── config/
 │   ├── settings.py                # Configuration management
 │   └── runtime.py                # Runtime configuration

@@ -106,22 +106,7 @@
 - [x] 7.14 Chronological State Replay Engine: Build a backend replaying the project_ledger state up to the current date. Ensure latest revisions block obsolete text chunks during vector/RAG searches. ✅ COMPLETED (исправлены баги ChromaDB: JSON-сериализация metadata и $and-фильтры; старые чанки блокируются в add_versioned_chunks; tests/test_state_replay_overrides.py)
 - [x] 7.15 Implicit Override Detection: Write a parser tracking uploaded document numbers or titles. If matching, auto-increment revision_index and link via overrides_ledger_id. ✅ COMPLETED (override_detector.py покрыт тестами: name patterns, structure hash, compare_excel, DocumentOverrideManager)
 
-## [✅] ЭТАП 9: Критические исправления (RFC: rfc_mia_fixes.md)
-- RFC: docs/rfc_mia_fixes.md
-- Status: ✅ COMPLETED
-- Implementation: app/modules/vram_policy.py, app/core/safe_tool_layer.py, app/modules/rag/structured_excel_parser.py, app/modules/rag/state_replay.py, app/modules/google_drive/override_detector.py, app/workers/multiprocessing_worker_pool.py, app/modules/object_diary/telegram_distiller.py, app/modules/financial/ledger_integration.py
-- Notes: Критические архитектурные уязвимости, инфраструктурные бутылочные горлышка, недоделки
-- [x] 9.1 VRAM Policy Fix - динамический сплит моделей, одна модель, жесткое квантование
-- [x] 9.2 Disable Workshop Contour - отключить генерацию CodeCandidate (уже не используется)
-- [x] 9.3 Safe Tool Generation Layer (Prototype) - песочница для динамического кода
-- [x] 9.4 Remove Duplicate Modules - очистка структуры кода (дубли перемещены в archive)
-- [x] 9.5 Hybrid RAG for Excel/Estimates - структурированный парсинг, гибридный поиск
-- [x] 9.6 Chronological State Replay Engine - версионирование чанков, фильтр по статусу
-- [x] 9.7 Implicit Override Detection - детекция оверрайдов документов
-- [x] 9.8 Worker Pool Multiprocessing - переписать на Multiprocessing
-- [x] 9.9 Telegram Distiller Priority - слова-маркеры, вес риска
-- [x] 9.10 Financial Ledger Integration - привязка к реальным оплатам (mock интеграция)
-- [ ] 9.11 PostgreSQL Migration - перенос транзакционной нагрузки на PostgreSQL (DEFERRED - требует setup)
+## [x] ЭТАП 8: Сканирование папки "Договоры" и реализация Дневников объектов
 - RFC: docs/rfc_google_drive_analysis.md, docs/rfc_object_diary.md (v1.9)
 - Status: ✅ COMPLETED
 - Implementation: scripts/scan_contracts_folder.py, google_drive_contracts_scan.json
@@ -150,3 +135,29 @@
 - [x] 8.22 Полный редизайн GUI с нормальным чатом - COMPLETED
 - [x] 8.23 Автозапуск LLM при старте Mia - COMPLETED
 - [x] 8.24 Создание ярлыка на рабочем столе - COMPLETED
+- [x] 8.25 Тесты всех 17 модулей `app/modules/object_diary/` + починка схемы БД - COMPLETED
+  (tests/test_object_diary.py, 119 тестов; добавлены таблицы `object_events`/`invoices`;
+  constraint_manager/virtual_documents/expert_teacher/telegram_distiller/contract_analyzer
+  переписаны под реальную схему; tests/test_temporal_module.py, 23 теста)
+
+## [✅] ЭТАП 9: Критические исправления (RFC: rfc_mia_fixes.md)
+- RFC: docs/rfc_mia_fixes.md
+- Status: ✅ COMPLETED (9.11 PostgreSQL Migration — ⏸️ DEFERRED, требует setup)
+- Implementation: app/modules/vram_policy.py, app/core/safe_tool_layer.py, app/modules/rag/structured_excel_parser.py, app/modules/rag/state_replay.py, app/modules/google_drive/override_detector.py, app/workers/multiprocessing_worker_pool.py, app/modules/object_diary/telegram_distiller.py, app/modules/financial/ledger_integration.py
+- Notes: Критические архитектурные уязвимости, инфраструктурные бутылочные горлышка, недоделки
+- [x] 9.1 VRAM Policy Fix - динамический сплит моделей, одна модель, жесткое квантование
+- [x] 9.2 Disable Workshop Contour - отключить генерацию CodeCandidate (уже не используется)
+- [x] 9.3 Safe Tool Generation Layer (Prototype) - песочница для динамического кода
+- [x] 9.4 Remove Duplicate Modules - очистка структуры кода (дубли перемещены в archive)
+- [x] 9.5 Hybrid RAG for Excel/Estimates - структурированный парсинг, гибридный поиск
+- [x] 9.6 Chronological State Replay Engine - версионирование чанков, фильтр по статусу
+- [x] 9.7 Implicit Override Detection - детекция оверрайдов документов
+- [x] 9.8 Worker Pool Multiprocessing - переписать на Multiprocessing
+- [x] 9.9 Telegram Distiller Priority - слова-маркеры, вес риска
+- [x] 9.10 Financial Ledger Integration - привязка к реальным оплатам (mock интеграция)
+- [ ] 9.11 PostgreSQL Migration - перенос транзакционной нагрузки на PostgreSQL (DEFERRED - требует setup)
+- [x] 9.12 Восстановление пакета `app/modules/temporal` (temporal_logic, alert_dispatcher,
+  temporal_alert_integration) - модули лежали в `archive/` как `*_duplicate.py`, пакет не
+  импортировался; починен `gui/mia_gui.py` (`TemporalLogic` → `TemporalLogicManager`)
+- [x] 9.13 Починка импортов `DocumentParser` → `DocumentParserFactory` в
+  document_info_extractor / contract_analyzer / rag.document_ingestor

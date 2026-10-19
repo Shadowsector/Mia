@@ -78,7 +78,7 @@
 
 **Проблема**:
 - Контур 3 генерирует CodeCandidate и новые кодовые обработчики
-- Safe Tool Generation Layer отложен (DEFERRED)
+- Safe Tool Generation Layer отложен (DEFERRED) — ✅ РЕШЕНО 2026-10-19: реализован `app/core/safe_tool_layer.py` (6.10/9.3)
 - Генерируемый код имеет прямой доступ к Studio и базе данных
 
 **Последствия**:
@@ -94,6 +94,8 @@
 **Этап**: 1
 
 ### 3. Критические недоделки (DEFERRED Components)
+> ✅ Все пункты этого раздела реализованы и покрыты тестами по состоянию на 2026-10-19
+> (см. Todo.md 9.6, 9.7; docs/changelog.md).
 
 #### 3.1 Chronological State Replay Engine (HIGH)
 
@@ -170,6 +172,13 @@
 **Решение**:
 - Удалить дубли из app/modules/temporal/
 - Импортировать модули строго из единого пространства (app/modules/object_diary/)
+
+**Статус 2026-10-19**: ✅ РЕШЕНО иначе — `app/modules/temporal/` содержит
+`TemporalLogicManager`/`AlertDispatcher`/`TemporalAlertIntegration` (восстановлены из
+`archive/*_duplicate.py`), а `app/modules/object_diary/temporal_logic.py` — это другой
+класс (`TemporalLogic`, deadline/schedule-логика). Пересечения API нет; GUI и cron-задачи
+используют `app.modules.temporal`, Object Diary — `object_diary.temporal_logic`.
+Покрыто тестами `tests/test_temporal_module.py` (23) и `tests/test_object_diary.py`.
 
 **Приоритет**: P2 (Средний)
 **Этап**: 3
