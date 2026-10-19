@@ -8,6 +8,20 @@ logs/
 # Секреты и окружение
 .env
 .env.local
+config/oauth_credentials.json
+config/service_account.json
+config/google_drive_token.json
+
+# Локальное runtime-состояние и machine-specific конфиги
+runtime.json
+mia_instance.lock
+mia_config.json
+
+# Данные сканирований и локальные выгрузки (большие артефакты)
+google_drive_*.json
+all_folders.txt
+folder_search_results.txt
+downloaded_documents/
 
 # Python
 __pycache__/
@@ -32,3 +46,4 @@ Thumbs.db
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.aider*

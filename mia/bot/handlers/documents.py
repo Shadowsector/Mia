@@ -135,32 +135,76 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     file_name = message.document.file_name or "файл"
+    
+    # Проверяем, нужно ли отвечать
+    should_reply = _should_reply_to_document(message)
+    
     try:
         stored = await ingest_document(message, context)
     except Exception as e:
         logger.exception("Не удалось принять документ: %s", e)
-        await message.reply_text("Не смогла скачать/разобрать файл, попробуй прислать ещё раз.")
+        if should_reply:
+            await message.reply_text("Не смогла скачать/разобрать файл, попробуй прислать ещё раз.")
         return
 
     if stored is None:
-        await message.reply_text("Не смогла обработать файл.")
+        if should_reply:
+            await message.reply_text("Не смогла обработать файл.")
         return
 
-    if stored.needs_ocr:
-        await message.reply_text(
-            f"Приняла «{stored.file_name}» — похоже, это скан. Распознаю текст, когда "
-            "попросишь сводку или зададашь вопрос по нему."
-        )
-    elif stored.char_count == 0:
-        await message.reply_text(
-            f"Приняла «{stored.file_name}», но не смогла извлечь текст "
-            "(формат пока не поддерживается)."
-        )
+    # Отвечаем только если нужно
+    if should_reply:
+        if stored.needs_ocr:
+            await message.reply_text(
+                f"Приняла «{stored.file_name}» — похоже, это скан. Распознаю текст, когда "
+                "попросишь сводку или зададашь вопрос по нему."
+            )
+        elif stored.char_count == 0:
+            await message.reply_text(
+                f"Приняла «{stored.file_name}», но не смогла извлечь текст "
+                "(формат пока не поддерживается)."
+            )
+        else:
+            await message.reply_text(
+                f"Приняла и разобрала «{stored.file_name}». Если нужна сводка — напиши "
+                "«Миа, дай сводку по этому документу» (ответом на файл)."
+            )
     else:
-        await message.reply_text(
-            f"Приняла и разобрала «{stored.file_name}». Если нужна сводка — напиши "
-            "«Миа, дай сводку по этому документу» (ответом на файл)."
-        )
+        logger.info(f"Документ обработан молча: {file_name} (не было прямого обращения к Миа)")
+
+
+def _should_reply_to_document(message: Message) -> bool:
+    """Определяет, нужно ли отвечать на документ.
+    
+    Отвечаем, если:
+    1. Это reply на другое сообщение (кто-то попросил сводку или задал вопрос)
+    2. В тексте сообщения есть обращение к Миа по имени или @упоминание
+    3. Это личный чат с ботом
+    
+    Не отвечаем, если:
+    - Файл просто скинут без контекста и без обращения к Миа
+    """
+    # Если это reply на другое сообщение - отвечаем
+    if message.reply_to_message_id is not None:
+        return True
+    
+    # Проверяем текст сообщения на предмет обращения к Миа
+    if message.text:
+        text_lower = message.text.lower()
+        # Проверяем упоминание бота по имени или @упоминание
+        bot_username = message.bot.username.lower() if message.bot.username else ""
+        if bot_username in text_lower or f"@{bot_username}" in text_lower:
+            return True
+        # Проверяем упоминание "миа" или "миа,"
+        if "миа" in text_lower:
+            return True
+    
+    # Проверяем, является ли это личный чат с ботом
+    if message.chat.type == "private":
+        return True
+    
+    # Во всех остальных случаях не отвечаем
+    return False
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

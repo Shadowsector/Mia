@@ -16,7 +16,7 @@ from telegram.ext import (
 
 from config import settings
 from mia.assistant.service import AssistantService
-from mia.bot.handlers import commands, documents, messages
+from mia.bot.handlers import commands, documents, messages, commands_natural
 from mia.core import instance
 from mia.core.llm import llm_client
 from mia.core.logging_setup import setup_logging
@@ -77,9 +77,12 @@ def build_application() -> Application:
     application.add_handler(MessageHandler(filters.VOICE, documents.handle_voice))
 
     # Текст (не команды)
-    application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, messages.handle_text)
-    )
+    text_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, messages.handle_text)
+    application.add_handler(text_handler)
+    
+    # Natural language system commands (before regular text handler for priority)
+    system_command_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, commands_natural.handle_natural_command)
+    application.add_handler(system_command_handler, group=-1)  # Higher priority
 
     application.add_error_handler(_error_handler)
 
