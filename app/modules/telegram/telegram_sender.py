@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional, Set
+from typing import Any, Iterable, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -25,16 +25,26 @@ class TelegramSenderError(Exception):
 
 
 class TelegramSender:
-    """Тонкая обёртка над ``telegram.Bot`` для доменных модулей."""
+    """Тонкая обёртка над ``telegram.Bot`` для доменных модулей.
+
+    Безопасность: если задан ``allowed_chat_ids`` (в т.ч. пустое множество),
+    включён режим allowlist — сообщения уходят ТОЛЬКО указанным chat_id, все
+    остальные блокируются и логируются. Это позволяет держать бота в режиме
+    «пишу только владельцу».
+    """
 
     def __init__(
         self,
         token: Optional[str] = None,
         bot: Any = None,
         default_chat_id: Optional[int] = None,
+        allowed_chat_ids: Optional[Iterable[int]] = None,
     ) -> None:
         self.default_chat_id = default_chat_id
         self._known_chat_ids: Set[int] = set()
+        self._allowed_chat_ids: Optional[Set[int]] = None
+        if allowed_chat_ids is not None:
+            self._allowed_chat_ids = {int(c) for c in allowed_chat_ids}
 
         if bot is not None:
             self.bot = bot
@@ -62,8 +72,27 @@ class TelegramSender:
         return getattr(settings, "BOT_TOKEN", "") or ""
 
     # ------------------------------------------------------------------
-    # Учёт известных чатов (пользователь писал боту -> можем ответить в ЛС)
+    # Allowlist и учёт известных чатов
     # ------------------------------------------------------------------
+    @property
+    def allowlist_enabled(self) -> bool:
+        return self._allowed_chat_ids is not None
+
+    def add_allowed(self, chat_id: int) -> None:
+        """Разрешить отправку в указанный chat_id (в режиме allowlist)."""
+        if self._allowed_chat_ids is None:
+            self._allowed_chat_ids = set()
+        self._allowed_chat_ids.add(int(chat_id))
+
+    def is_allowed(self, chat_id: Any) -> bool:
+        try:
+            cid = int(chat_id)
+        except (TypeError, ValueError):
+            return False
+        if self._allowed_chat_ids is None:
+            return True
+        return cid in self._allowed_chat_ids
+
     def register(self, chat_id: int) -> None:
         """Запомнить chat_id (вызывается при получении сообщения)."""
         if chat_id is not None:
@@ -82,11 +111,25 @@ class TelegramSender:
     # Интерфейс для доменных модулей
     # ------------------------------------------------------------------
     def send(self, recipient_id: Any, message: str) -> bool:
-        """Отправить сообщение. Возвращает True при успехе."""
+        """Отправить сообщение. Возвращает True при успехе.
+
+        В режиме allowlist отправка кому-либо, кроме разрешённых, блокируется.
+        """
         chat_id = self._resolve_chat_id(recipient_id)
         if chat_id is None:
             logger.warning("Не удалось определить chat_id для %r", recipient_id)
             return False
+
+        if self._allowed_chat_ids is not None and chat_id not in self._allowed_chat_ids:
+            logger.warning(
+                "Отправка заблокирована (allowlist): chat_id=%s вне разрешённого "
+                "списка %s. Сообщение: %s",
+                chat_id,
+                sorted(self._allowed_chat_ids),
+                message[:120],
+            )
+            return False
+
         try:
             self.bot.send_message(chat_id=chat_id, text=message)
             return True
@@ -97,10 +140,13 @@ class TelegramSender:
     def can_send_private(self, user_id: Any) -> bool:
         """Может ли бот написать пользователю в ЛС.
 
-        Telegram разрешает ЛС только если пользователь уже начал диалог с
-        ботом. Если такой chat_id регистрировался в текущей сессии — True.
+        В режиме allowlist — только разрешённым chat_id. Иначе — только тем,
+        кто уже писал боту в текущей сессии.
         """
+        if self._allowed_chat_ids is not None:
+            return self.is_allowed(user_id)
         try:
             return int(user_id) in self._known_chat_ids
         except (TypeError, ValueError):
             return False
+

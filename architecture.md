@@ -325,6 +325,11 @@ Intent Detection → Response Generation → Telegram Reply
 - Proactive alerts: daily digest (10:00), critical objects (16:00) and cron tasks
   via `AlertDispatcher` started in `post_init` / stopped in `post_shutdown`.
 - Commands: `/start`, `/help`, `/status`.
+- **Safety**: `TELEGRAM_ALLOWLIST_ONLY=true` (default) — outgoing messages go only
+  to `TELEGRAM_OWNER_CHAT_ID`; all other recipients are blocked and logged. If the
+  owner is unset, nothing is sent. Use `/here` to discover your chat_id.
+- On startup, `seed_roles_from_employees()` populates `system_roles` from
+  `config/employees.json` (idempotent) so delegation can resolve people by name.
 
 **Run**: `python -m app.bot.main` (token from `.env` → `BOT_TOKEN`).
 
@@ -522,6 +527,9 @@ Semantic Index → RAG Retrieval
 # Telegram
 BOT_TOKEN=<your-bot-token>
 BOT_USERNAME=@mia_assistant_wd_bot
+# Outgoing messages go ONLY to this chat_id (send /here to learn it)
+TELEGRAM_OWNER_CHAT_ID=
+TELEGRAM_ALLOWLIST_ONLY=true
 
 # Ollama (legacy bot mia/)
 OLLAMA_BASE_URL=http://localhost:11434
@@ -784,6 +792,7 @@ C:\mia\
 │   ├── test_telegram_sender.py        # TelegramSender adapter (9 tests)
 │   ├── test_bot_assistant.py          # PM OS assistant orchestrator (11 tests)
 │   ├── test_alert_dispatcher_wiring.py # PM OS alert wiring (3 tests)
+│   ├── test_seed_roles.py             # system_roles seeding (4 tests)
 │   └── test_google_drive_financial.py # Drive ledger, contracts, finance (68 tests)
 ├── config/
 │   ├── settings.py                # Configuration management

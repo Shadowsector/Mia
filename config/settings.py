@@ -27,6 +27,13 @@ def _get(name: str, default: str = "") -> str:
 # --- Telegram ---
 BOT_TOKEN: str = _get("BOT_TOKEN")
 BOT_USERNAME: str = _get("BOT_USERNAME", "@mia_assistant_wd_bot")
+# Telegram chat_id владельца — единственный получатель исходящих сообщений
+# бота PM OS (делегации, алерты, напоминания). Узнать свой id: команда /here.
+TELEGRAM_OWNER_CHAT_ID: str = _get("TELEGRAM_OWNER_CHAT_ID", "")
+# Безопасность: бот пишет ТОЛЬКО владельцу (allowlist). false — снять ограничение.
+TELEGRAM_ALLOWLIST_ONLY: bool = _get("TELEGRAM_ALLOWLIST_ONLY", "true").lower() in (
+    "1", "true", "yes", "on"
+)
 
 # --- Ollama / LLM (легаси-бот mia/) ---
 OLLAMA_BASE_URL: str = _get("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")

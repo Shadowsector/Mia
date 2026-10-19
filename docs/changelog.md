@@ -19,6 +19,16 @@
     действительно делегирование (для оркестратора бота).
   - Настройки `LLAMA_BASE_URL`/`LLAMA_MODEL`/`LLAMA_EMBED_MODEL`, `ALERTS_ENABLED`/
     `ALERTS_CHAT_ID` в `config/settings.py` и `.env.example`.
+- **Режим «пишу только владельцу» + заполнение сотрудников** (+13 тестов, всего 639):
+  - `TelegramSender` — allowlist (`allowed_chat_ids`): исходящие только разрешённым
+    chat_id, остальные блокируются и логируются; `can_send_private` учитывает allowlist.
+  - Настройки `TELEGRAM_OWNER_CHAT_ID` и `TELEGRAM_ALLOWLIST_ONLY` (по умолчанию true).
+    Если владелец не задан — бот не отправляет исходящие (безопасный дефолт).
+  - Команда `/here` — показывает chat_id/user_id и подсказку для `.env`.
+  - `app/modules/storage/seed_roles.py` — заполнение `system_roles` сотрудниками из
+    `config/employees.json` (idempotent), вызывается при старте бота.
+  - Тесты: `test_seed_roles.py` (4), allowlist в `test_telegram_sender.py` (+6),
+    `build_sender` в `test_alert_dispatcher_wiring.py` (+3).
 - **Замена заглушек реальной интеграцией** (item 2; тесты — `tests/test_stub_integrations.py`, 25):
   - `DelegationEngine` — LLM-парсинг запроса (`PromptTemplates.delegation_extraction_prompt`),
     классификация ответа vs трёп (`delegation_answer_classifier_prompt`), создание задачи
@@ -180,6 +190,6 @@
   актуальных версий (`status: actual`).
 
 ### Test results
-- **626 passed** (было 317 в начале дня; +309 тестов): покрытие 15 модулей (+228),
+- **639 passed** (было 317 в начале дня; +322 теста): покрытие 15 модулей (+228),
   интеграционные тесты de-stub (+25), тесты cron-логики (+10),
-  runtime-интеграция PM OS/llama.cpp/Telegram (+46).
+  runtime-интеграция PM OS/llama.cpp/Telegram (+46), allowlist/seed/`/here` (+13).

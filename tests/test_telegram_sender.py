@@ -75,3 +75,54 @@ class TestConstruction:
         monkeypatch.setattr(cfg, "BOT_TOKEN", "")
         with pytest.raises(TelegramSenderError):
             TelegramSender()
+
+
+class TestAllowlist:
+    def test_allowed_recipient_sends(self):
+        from app.modules.telegram import TelegramSender
+
+        bot = FakeBot()
+        s = TelegramSender(bot=bot, allowed_chat_ids={5})
+        assert s.send(5, "hi") is True
+        assert bot.sent == [(5, "hi")]
+
+    def test_blocked_recipient_not_sent(self):
+        from app.modules.telegram import TelegramSender
+
+        bot = FakeBot()
+        s = TelegramSender(bot=bot, allowed_chat_ids={5})
+        assert s.send(7, "hi") is False
+        assert bot.sent == []
+
+    def test_empty_allowlist_blocks_everyone(self):
+        from app.modules.telegram import TelegramSender
+
+        bot = FakeBot()
+        s = TelegramSender(bot=bot, allowed_chat_ids=[])
+        assert s.allowlist_enabled is True
+        assert s.send(5, "hi") is False
+        assert bot.sent == []
+
+    def test_no_allowlist_is_unrestricted(self):
+        from app.modules.telegram import TelegramSender
+
+        s = TelegramSender(bot=FakeBot())
+        assert s.allowlist_enabled is False
+        assert s.is_allowed(999) is True
+
+    def test_add_allowed(self):
+        from app.modules.telegram import TelegramSender
+
+        bot = FakeBot()
+        s = TelegramSender(bot=bot, allowed_chat_ids=[])
+        s.add_allowed(42)
+        assert s.send(42, "hi") is True
+
+    def test_can_send_private_respects_allowlist(self):
+        from app.modules.telegram import TelegramSender
+
+        s = TelegramSender(bot=FakeBot(), allowed_chat_ids={5})
+        assert s.can_send_private(5) is True
+        assert s.can_send_private(7) is False
+        assert s.can_send_private("x") is False
+

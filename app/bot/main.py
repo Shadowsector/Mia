@@ -26,12 +26,42 @@ from app.modules.delegation.delegation_engine import DelegationEngine
 from app.modules.llm.llama_cpp_client import LlamaCppClient
 from app.modules.object_diary.health_score_engine import HealthScoreEngine
 from app.modules.storage.database import initialize_database
+from app.modules.storage.seed_roles import seed_roles_from_employees
 from app.modules.telegram import TelegramSender
 from app.modules.temporal.alert_dispatcher import AlertDispatcher
 from app.modules.temporal.temporal_logic import TemporalLogicManager
 from config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_owner_id(raw: str):
+    raw = (raw or "").strip()
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def build_sender() -> TelegramSender:
+    """Создать TelegramSender с соблюдением режима «пишу только владельцу».
+
+    При ``TELEGRAM_ALLOWLIST_ONLY=true`` исходящие сообщения разрешены только
+    для ``TELEGRAM_OWNER_CHAT_ID``. Если владелец не задан — allowlist пуст и
+    бот не отправит НИЧЕГО (безопасный дефолт). Узнать свой chat_id: `/here`.
+    """
+    if not settings.TELEGRAM_ALLOWLIST_ONLY:
+        return TelegramSender()
+
+    owner = _parse_owner_id(settings.TELEGRAM_OWNER_CHAT_ID)
+    allowed = {owner} if owner is not None else set()
+    if owner is None:
+        logger.warning(
+            "TELEGRAM_ALLOWLIST_ONLY=true, но TELEGRAM_OWNER_CHAT_ID не задан — "
+            "бот не будет отправлять исходящие сообщения. Пришлите боту /here, "
+            "чтобы узнать свой chat_id, и впишите его в .env."
+        )
+    return TelegramSender(allowed_chat_ids=allowed)
 
 
 def build_alert_dispatcher(sender: TelegramSender, enabled: bool = None, chat_id: str = None):
@@ -84,15 +114,36 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "• отвечать на вопросы по проектам и документам;\n"
         "• делегировать: «спроси у Светы, когда будет смета по объекту X»;\n"
         "• принимать ответы на делегированные вопросы.\n"
-        "Команды: /start, /help, /status."
+        "Команды: /start, /help, /status, /here."
     )
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     llm: LlamaCppClient = context.application.bot_data["llm"]
+    sender: TelegramSender = context.application.bot_data["sender"]
     ok = await asyncio.to_thread(llm.is_available)
+    mode = (
+        f"только владелец ({settings.TELEGRAM_OWNER_CHAT_ID or 'не задан'})"
+        if sender.allowlist_enabled
+        else "без ограничений"
+    )
     await update.message.reply_text(
-        f"llama.cpp: {'доступен' if ok else 'недоступен'} ({settings.LLAMA_BASE_URL})"
+        f"llama.cpp: {'доступен' if ok else 'недоступен'} ({settings.LLAMA_BASE_URL})\n"
+        f"Исходящие: {mode}"
+    )
+
+
+async def cmd_here(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat = update.effective_chat
+    user = update.effective_user
+    await update.message.reply_text(
+        "Твой chat_id: {chat_id}\nuser_id: {user_id}\n\n"
+        "Впиши chat_id в `.env`:\n"
+        "TELEGRAM_OWNER_CHAT_ID={chat_id}\n"
+        "ALERTS_CHAT_ID={chat_id}".format(
+            chat_id=chat.id if chat else "?",
+            user_id=user.id if user else "?",
+        )
     )
 
 
@@ -125,9 +176,13 @@ def build_application() -> Application:
         )
 
     initialize_database()
+    try:
+        seed_roles_from_employees(settings.EMPLOYEES_FILE)
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning("Не удалось заполнить system_roles: %s", e)
 
     llm = LlamaCppClient()
-    sender = TelegramSender()
+    sender = build_sender()
     delegation = DelegationEngine(llm_client=llm, telegram_sender=sender)
     assistant = PmOsAssistant(llm=llm, delegation=delegation)
     dispatcher = build_alert_dispatcher(sender)
@@ -148,6 +203,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("help", cmd_help))
     application.add_handler(CommandHandler("status", cmd_status))
+    application.add_handler(CommandHandler("here", cmd_here))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text)
     )

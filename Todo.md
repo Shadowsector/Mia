@@ -167,6 +167,12 @@
   post_init/post_shutdown, дайджест/критические/cron); DelegationEngine.
   try_parse_delegation(); tests/test_bot_assistant.py 11,
   test_alert_dispatcher_wiring.py 3; всего 626 тестов)
+- [x] 8.31 Режим «пишу только владельцу» + заполнение сотрудников - COMPLETED
+  (TelegramSender allowlist: `allowed_chat_ids`, исходящие только разрешённым;
+  настройки `TELEGRAM_OWNER_CHAT_ID` / `TELEGRAM_ALLOWLIST_ONLY` (default true,
+  без владельца не шлёт вообще); команда `/here`; `seed_roles_from_employees`
+  заполняет `system_roles` из config/employees.json при старте бота;
+  tests/test_seed_roles.py 4, allowlist +6, build_sender +3; всего 639 тестов)
 
 ## [✅] ЭТАП 9: Критические исправления (RFC: rfc_mia_fixes.md)
 - RFC: docs/rfc_mia_fixes.md
