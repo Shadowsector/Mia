@@ -38,7 +38,8 @@ Mia PM OS is a local, privacy-preserving AI Construction Project Management Syst
 - **Tkinter/ttk**: GUI framework
 - **SQLite**: Database storage
 - **Pydantic v2**: Data validation and schemas
-- **Ollama**: Local LLM inference (Gemma 3 12B / Qwen 3 Coder 14B)
+- **llama.cpp**: Primary local LLM inference (llama-server, OpenAI-compatible API, port 8080)
+- **Ollama**: Legacy/local LLM inference (Gemma 3 12B / Qwen 3 Coder 14B)
 - **ChromaDB**: Vector storage for RAG
 - **python-telegram-bot**: Telegram bot integration
 - **APScheduler**: Task scheduling
@@ -311,6 +312,22 @@ Telegram Message → Message Validation → Memory Storage →
 Intent Detection → Response Generation → Telegram Reply
 ```
 
+### 8b. PM OS Telegram Bot (`app/bot/main.py`)
+
+**Purpose**: Telegram front-end for the Mia PM OS runtime (primary system).
+
+**Key Features**:
+- LLM via **llama.cpp** (`LLAMA_BASE_URL`, OpenAI-compatible API) through
+  `app/modules/llm/llama_cpp_client.py`.
+- Delegation ("Спроси у Светы"): `PmOsAssistant` intercepts answers to delegated
+  questions, detects new delegation requests (`DelegationEngine.try_parse_delegation`),
+  otherwise answers via LLM.
+- Proactive alerts: daily digest (10:00), critical objects (16:00) and cron tasks
+  via `AlertDispatcher` started in `post_init` / stopped in `post_shutdown`.
+- Commands: `/start`, `/help`, `/status`.
+
+**Run**: `python -m app.bot.main` (token from `.env` → `BOT_TOKEN`).
+
 ### 9. Memory System (`mia/memory/`)
 
 **Purpose**: Persistent message storage and semantic search
@@ -503,16 +520,25 @@ Semantic Index → RAG Retrieval
 
 ```bash
 # Telegram
-BOT_TOKEN=8905934932:AAF7V1oM6Vyn0SxvmwThOXEuq4NcY39Eb80
+BOT_TOKEN=<your-bot-token>
 BOT_USERNAME=@mia_assistant_wd_bot
 
-# Ollama
+# Ollama (legacy bot mia/)
 OLLAMA_BASE_URL=http://localhost:11434
 LLM_MODEL=qwen2.5:14b-instruct
 EMBED_MODEL=bge-m3
 LLM_TEMPERATURE=0.6
 LLM_MAX_TOKENS=1200
 LLM_TIMEOUT=300
+
+# llama.cpp (primary LLM for Mia PM OS)
+LLAMA_BASE_URL=http://localhost:8080
+LLAMA_MODEL=qwen2.5:14b-instruct
+LLAMA_EMBED_MODEL=
+
+# Proactive alerts (PM OS)
+ALERTS_ENABLED=true
+ALERTS_CHAT_ID=
 
 # Data
 DATA_DIR=data
@@ -754,6 +780,10 @@ C:\mia\
 │   ├── test_document_pipeline.py      # Parsers, extractor, RAG ingestion (93 tests)
 │   ├── test_llm_clients.py            # Ollama client / llama.cpp manager (38 tests)
 │   ├── test_stub_integrations.py      # De-stubbed integrations (25 tests)
+│   ├── test_llama_cpp_client.py       # llama.cpp client (23 tests)
+│   ├── test_telegram_sender.py        # TelegramSender adapter (9 tests)
+│   ├── test_bot_assistant.py          # PM OS assistant orchestrator (11 tests)
+│   ├── test_alert_dispatcher_wiring.py # PM OS alert wiring (3 tests)
 │   └── test_google_drive_financial.py # Drive ledger, contracts, finance (68 tests)
 ├── config/
 │   ├── settings.py                # Configuration management

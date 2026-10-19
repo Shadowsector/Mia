@@ -85,13 +85,37 @@ class DelegationEngine:
         LLM extracts question, object, topic, required role
         """
         extracted = self._extract_with_llm(text, context)
+        return self._build_request(extracted, text, context)
 
+    def try_parse_delegation(
+        self,
+        text: str,
+        context: str = ""
+    ) -> Optional[DelegationRequestSchema]:
+        """Вернуть запрос делегирования, только если это действительно запрос.
+
+        В отличие от ``parse_delegation_request`` (который всегда строит запрос
+        с дефолтами), этот метод возвращает ``None``, если LLM решила, что текст
+        не является делегированием. Используется оркестратором бота, чтобы не
+        делегировать каждое сообщение.
+        """
+        extracted = self._extract_with_llm(text, context)
+        if not extracted:
+            return None
+        return self._build_request(extracted, text, context)
+
+    def _build_request(
+        self,
+        extracted: Dict[str, Any],
+        text: str,
+        context: str
+    ) -> DelegationRequestSchema:
         target_name = extracted.get("target_name") or "Света"
         question = extracted.get("question") or text
         object_id = extracted.get("object_id") or context
         requester_id = extracted.get("requester_id") or "user"
 
-        request = DelegationRequestSchema(
+        return DelegationRequestSchema(
             request_id=None,
             requester_id=requester_id,
             target_name=target_name,
@@ -100,8 +124,6 @@ class DelegationEngine:
             created_at=datetime.now(),
             status="PENDING"
         )
-
-        return request
 
     def _extract_with_llm(self, text: str, context: str) -> Dict[str, Any]:
         """Извлечь поля запроса делегирования через LLM (если клиент доступен)."""

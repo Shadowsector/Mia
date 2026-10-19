@@ -28,13 +28,30 @@ def _get(name: str, default: str = "") -> str:
 BOT_TOKEN: str = _get("BOT_TOKEN")
 BOT_USERNAME: str = _get("BOT_USERNAME", "@mia_assistant_wd_bot")
 
-# --- Ollama / LLM ---
+# --- Ollama / LLM (легаси-бот mia/) ---
 OLLAMA_BASE_URL: str = _get("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
 LLM_MODEL: str = _get("LLM_MODEL", "qwen2.5:14b-instruct")
 EMBED_MODEL: str = _get("EMBED_MODEL", "bge-m3")
 LLM_TEMPERATURE: float = float(_get("LLM_TEMPERATURE", "0.6"))
 LLM_MAX_TOKENS: int = int(_get("LLM_MAX_TOKENS", "1200"))
 LLM_TIMEOUT: int = int(_get("LLM_TIMEOUT", "300"))
+
+# --- llama.cpp / LLM (Mia PM OS, основная система) ---
+# llama-server поднимается скриптом start_llama_server.bat / GUI (порт 8080).
+LLAMA_BASE_URL: str = _get("LLAMA_BASE_URL", "http://localhost:8080").rstrip("/")
+# Имя модели для OpenAI-совместимого API (llama-server принимает любое имя —
+# реальная модель определяется загруженным .gguf файлом).
+LLAMA_MODEL: str = _get("LLAMA_MODEL", "qwen2.5:14b-instruct")
+# Модель для эмбеддингов (нужен llama-server с флагом --embeddings). Пусто —
+# использовать основную модель.
+LLAMA_EMBED_MODEL: str = _get("LLAMA_EMBED_MODEL", "")
+
+# --- Проактивные алерты PM OS ---
+# Включить фоновые алерты (дайджест 10:00, критические объекты 16:00, cron).
+ALERTS_ENABLED: bool = _get("ALERTS_ENABLED", "true").lower() in ("1", "true", "yes", "on")
+# Telegram chat_id получателя алертов (руководитель/владелец). Пусто — алерты
+# только логируются, а фоновый диспетчер не запускается.
+ALERTS_CHAT_ID: str = _get("ALERTS_CHAT_ID", "")
 
 # --- Vision / OCR ---
 # Модель с поддержкой изображений для распознавания сканов (PDF, фото).

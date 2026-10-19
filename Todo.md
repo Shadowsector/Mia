@@ -150,6 +150,23 @@
   temporal AlertDispatcher + TemporalAlertIntegration (HealthScore/Diary/cron);
   TemporalLogicManager._execute_task_logic: классификация задач + object_id;
   FinancialLedgerIntegration: local SQLite + HTTP 1C/ERP; tests/test_stub_integrations.py, 25 тестов)
+- [x] 8.28 Runtime-интеграция: связывание de-stub модулей с PM OS - COMPLETED
+  (решение: **Mia PM OS** — основная система; LLM — **llama.cpp** на порту 8080;
+  Telegram-бот прикручен к PM OS, токены берутся из `.env`)
+- [x] 8.29 Клиент llama.cpp + Telegram-отправитель - COMPLETED
+  (app/modules/llm/llama_cpp_client.py — OpenAI-совместимый клиент
+  `/v1/chat/completions`, `/v1/embeddings`, `/v1/models`, sync + async
+  `generate`/`generate_json` для доменных модулей; app/modules/telegram/
+  telegram_sender.py — адаптер `send`/`can_send_private`; настройки `LLAMA_*`
+  и `ALERTS_*` в config/settings.py и .env.example;
+  tests/test_llama_cpp_client.py 23, test_telegram_sender.py 9)
+- [x] 8.30 Telegram-бот Mia PM OS - COMPLETED
+  (app/bot/assistant.py — оркестратор: перехват ответа на делегирование →
+  новая делегация → диалог через llama.cpp; app/bot/main.py — python-telegram-bot,
+  запуск `python -m app.bot.main`; фоновые алерты (AlertDispatcher по
+  post_init/post_shutdown, дайджест/критические/cron); DelegationEngine.
+  try_parse_delegation(); tests/test_bot_assistant.py 11,
+  test_alert_dispatcher_wiring.py 3; всего 626 тестов)
 
 ## [✅] ЭТАП 9: Критические исправления (RFC: rfc_mia_fixes.md)
 - RFC: docs/rfc_mia_fixes.md

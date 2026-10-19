@@ -3,6 +3,22 @@
 ## 2026-10-19
 
 ### Added
+- **Runtime-интеграция: Mia PM OS + llama.cpp + Telegram-бот** (+46 тестов, всего 626):
+  - `app/modules/llm/llama_cpp_client.py` — OpenAI-совместимый клиент llama.cpp
+    (`/v1/chat/completions`, `/v1/embeddings`, `/v1/models`); sync-методы + async
+    `generate`/`generate_json` (совместим с `OllamaClient`), кэш ответов.
+    `tests/test_llama_cpp_client.py` — 23 теста.
+  - `app/modules/telegram/telegram_sender.py` — адаптер `send`/`can_send_private`
+    над `telegram.Bot` для доменных модулей. `tests/test_telegram_sender.py` — 9.
+  - `app/bot/assistant.py` — `PmOsAssistant`: перехват ответа на делегирование →
+    новая делегация → диалог через llama.cpp. `tests/test_bot_assistant.py` — 11.
+  - `app/bot/main.py` — Telegram-бот PM OS (`python -m app.bot.main`): команды
+    `/start`, `/help`, `/status`, обработка текста, фоновые алерты (`AlertDispatcher`
+    через `post_init`/`post_shutdown`). `tests/test_alert_dispatcher_wiring.py` — 3.
+  - `DelegationEngine.try_parse_delegation()` — возвращает запрос только если это
+    действительно делегирование (для оркестратора бота).
+  - Настройки `LLAMA_BASE_URL`/`LLAMA_MODEL`/`LLAMA_EMBED_MODEL`, `ALERTS_ENABLED`/
+    `ALERTS_CHAT_ID` в `config/settings.py` и `.env.example`.
 - **Замена заглушек реальной интеграцией** (item 2; тесты — `tests/test_stub_integrations.py`, 25):
   - `DelegationEngine` — LLM-парсинг запроса (`PromptTemplates.delegation_extraction_prompt`),
     классификация ответа vs трёп (`delegation_answer_classifier_prompt`), создание задачи
@@ -164,5 +180,6 @@
   актуальных версий (`status: actual`).
 
 ### Test results
-- **580 passed** (было 317 в начале дня; +263 теста): покрытие 15 модулей (+228),
-  интеграционные тесты de-stub (+25) и тесты cron-логики (+10).
+- **626 passed** (было 317 в начале дня; +309 тестов): покрытие 15 модулей (+228),
+  интеграционные тесты de-stub (+25), тесты cron-логики (+10),
+  runtime-интеграция PM OS/llama.cpp/Telegram (+46).
