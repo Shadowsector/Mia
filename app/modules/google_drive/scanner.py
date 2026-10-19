@@ -72,6 +72,9 @@ class GoogleDriveScanner:
     
     def list_accessible_folders(self) -> List[Dict[str, Any]]:
         """List all accessible folders"""
+        if not self.service:
+            logger.error("Not authenticated with Google Drive API")
+            return []
         try:
             self.stats['api_calls'] += 1
             results = self.service.files().list(
@@ -89,6 +92,9 @@ class GoogleDriveScanner:
     
     def find_folder_by_name(self, folder_name: str) -> Optional[str]:
         """Find folder ID by name"""
+        if not self.service:
+            logger.error("Not authenticated with Google Drive API")
+            return None
         try:
             self.stats['api_calls'] += 1
             results = self.service.files().list(
@@ -109,6 +115,9 @@ class GoogleDriveScanner:
     
     def get_folder_info(self, folder_id: str) -> Optional[Dict[str, Any]]:
         """Get folder metadata"""
+        if not self.service:
+            logger.error("Not authenticated with Google Drive API")
+            return None
         try:
             self.stats['api_calls'] += 1
             folder = self.service.files().get(
@@ -164,37 +173,6 @@ class GoogleDriveScanner:
             return []
     
     def list_files(self, folder_id: str) -> List[Dict[str, Any]]:
-        """List files in a folder"""
-        try:
-            self.stats['api_calls'] += 1
-            results = self.service.files().list(
-                q=f"'{folder_id}' in parents and mimeType!='application/vnd.google-apps.folder'",
-                fields='files(id,name,mimeType,createdTime,modifiedTime,size,version)',
-                pageSize=100
-            ).execute()
-            
-            self.stats['files_analyzed'] += len(results.get('files', []))
-            return results.get('files', [])
-            
-        except HttpError as e:
-            logger.error(f"Error listing files: {e}")
-            self.stats['errors'] += 1
-            return []
-        """List all accessible files (for debugging)"""
-        try:
-            self.stats['api_calls'] += 1
-            results = self.service.files().list(
-                q="trashed=false",
-                fields='files(id,name,mimeType)',
-                pageSize=limit
-            ).execute()
-            
-            return results.get('files', [])
-            
-        except HttpError as e:
-            logger.error(f"Error listing all files: {e}")
-            self.stats['errors'] += 1
-            return []
         """List files in a folder"""
         try:
             self.stats['api_calls'] += 1

@@ -639,6 +639,30 @@ def initialize_database():
             )
         """)
         
+        # Contract Links table (связи договоров Google Drive с объектами)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS contract_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contract_id TEXT NOT NULL,
+                contract_name TEXT NOT NULL,
+                object_id TEXT NOT NULL,
+                confidence TEXT DEFAULT 'medium',
+                linked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                verified_by TEXT,
+                FOREIGN KEY (object_id) REFERENCES objects(object_id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_contract_links_object
+            ON contract_links(object_id)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_contract_links_contract
+            ON contract_links(contract_id)
+        """)
+
         # Expert Lessons table (Живая Онтология Девиаций)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS expert_lessons (

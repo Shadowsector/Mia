@@ -216,15 +216,22 @@ Return JSON:
     @staticmethod
     def temporal_context_prompt(current_time: datetime) -> str:
         """Промпт для Absolute Time Injection"""
+        from datetime import timedelta
+
+        today = current_time.strftime('%Y-%m-%d')
+        tomorrow = (current_time + timedelta(days=1)).strftime('%Y-%m-%d')
+        yesterday = (current_time - timedelta(days=1)).strftime('%Y-%m-%d')
+        day_before = (current_time - timedelta(days=2)).strftime('%Y-%m-%d')
+
         return f"""
 [ SYSTEM CONTEXT ]
 Current Absolute Time: {current_time.strftime('%Y-%m-%d %H:%M:%S')}
 Current Day of Week: {current_time.strftime('%A')}
 Relative Translation Map:
-- "Сегодня" = {current_time.strftime('%Y-%m-%d')}
-- "Завтра" = {(current_time.replace(day=current_time.day + 1)).strftime('%Y-%m-%d')}
-- "Вчера" = {(current_time.replace(day=current_time.day - 1)).strftime('%Y-%m-%d')}
-- "Позавчера" = {(current_time.replace(day=current_time.day - 2)).strftime('%Y-%m-%d')}
+- "Сегодня" = {today}
+- "Завтра" = {tomorrow}
+- "Вчера" = {yesterday}
+- "Позавчера" = {day_before}
 [ END SYSTEM CONTEXT ]
 
 Process the user's request with awareness of the current time and relative date mappings.

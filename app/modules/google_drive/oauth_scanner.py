@@ -651,13 +651,24 @@ class OAuthDriveScanner:
         return 'other'
     
     def infer_document_type(self, filename: str) -> str:
-        """Infer document type from filename"""
+        """Infer document type from filename.
+
+        Longer keywords win over short abbreviations so that e.g. "паспорт"
+        is not classified as "sp" just because that keyword is checked first.
+        """
         filename_lower = filename.lower()
-        
-        for doc_type, keywords in self.DOCUMENT_TYPE_KEYWORDS.items():
-            if any(keyword in filename_lower for keyword in keywords):
+
+        keyword_pairs = [
+            (keyword, doc_type)
+            for doc_type, keywords in self.DOCUMENT_TYPE_KEYWORDS.items()
+            for keyword in keywords
+        ]
+        keyword_pairs.sort(key=lambda pair: len(pair[0]), reverse=True)
+
+        for keyword, doc_type in keyword_pairs:
+            if keyword and keyword in filename_lower:
                 return doc_type
-        
+
         return 'unknown'
     
     def analyze_file(self, file_metadata: Dict[str, Any]) -> Dict[str, Any]:

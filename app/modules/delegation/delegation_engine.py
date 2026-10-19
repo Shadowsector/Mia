@@ -102,7 +102,7 @@ class DelegationEngine:
                 user['user_id'],
                 user['role'],
                 channel,
-                datetime.now() + timedelta(hours=4)  # Дедлайн через 4 часа
+                (datetime.now() + timedelta(hours=4)).isoformat()  # Дедлайн через 4 часа
             ))
             
             question_id = cursor.lastrowid
@@ -158,7 +158,7 @@ class DelegationEngine:
                 UPDATE delegated_questions 
                 SET answer_received = 1, answer_text = ?, answer_timestamp = ?
                 WHERE question_id = ?
-            """, (message, datetime.now(), delegated_question_id))
+            """, (message, datetime.now().isoformat(), delegated_question_id))
             
             return cursor.rowcount > 0
     
@@ -175,7 +175,7 @@ class DelegationEngine:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT * FROM delegated_questions 
-                WHERE answer_received = 0 AND status != 'ESCALATED'
+                WHERE answer_received = 0 AND escalation_status != 'ESCALATED'
             """)
             
             rows = cursor.fetchall()
@@ -185,10 +185,18 @@ class DelegationEngine:
                 deadline = question['deadline_for_reply']
                 
                 if deadline:
+                    if isinstance(deadline, str):
+                        try:
+                            deadline = datetime.fromisoformat(deadline)
+                        except ValueError:
+                            continue
+                    
                     time_diff = current_time - deadline
                     
-                    if time_diff >= timedelta(hours=4) and time_diff < timedelta(hours=24):
-                        # Мягкое напоминание
+                    if time_diff >= timedelta(0) and time_diff < timedelta(hours=24):
+                        # Мягкое напоминание (только один раз)
+                        if question.get('escalation_status') == 'REMINDED':
+                            continue
                         self._send_reminder(question)
                         question['escalation_status'] = 'REMINDED'
                         question['reminder_count'] = question['reminder_count'] + 1
@@ -211,7 +219,7 @@ class DelegationEngine:
                             SET escalation_status = 'ESCALATED', escalated_to_user_id = 'admin',
                                 escalation_timestamp = ?
                             WHERE question_id = ?
-                        """, (current_time, question['question_id']))
+                        """, (current_time.isoformat(), question['question_id']))
                         
                         escalated_questions.append(question)
         

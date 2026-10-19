@@ -3,6 +3,23 @@
 ## 2026-10-19
 
 ### Added
+- **Покрытие тестами 15 ранее непокрытых модулей** (+228 тестов):
+  - `tests/test_delegation_accuracy.py` — 29 тестов: `DelegationEngine` (парсинг запроса,
+    поиск по `system_roles`, разрешение неоднозначности, делегирование, перехват ответа,
+    эскалация REMINDED/ESCALATED) и `AccuracyContourManager` (Метод 1 NetworkX,
+    граф зависимостей, Метод 2/3, консенсус-арбитр, полный аудит).
+  - `tests/test_document_pipeline.py` — 93 теста: `DocumentParserFactory` и все парсеры
+    (PDF/Word/Excel/Text/Image), `DocumentInfoExtractor`, `DocumentIngestor`,
+    `StructuredExcelParser` + `HybridRAG`, `ChromaManager`, `TempFileProcessor`,
+    `GoogleDriveScanner`/`OAuthDriveScanner`.
+  - `tests/test_llm_clients.py` — 38 тестов: `OllamaClient` (кэш, retry-обёртка,
+    generate/generate_json/embedding), `PromptTemplates`, `LlamaCppManager`
+    (start/stop, health-check, generate, stream, download_model).
+  - `tests/test_google_drive_financial.py` — 68 тестов: `FinancialLedgerIntegration`,
+    `FinancialHealthAnalyzer`, `ContractLinker`, `ProjectLedgerManager`,
+    `KnowledgeSummarizer`, `DocumentProcessor`/`GoogleDriveDownloader`.
+- **Схема БД**: добавлена таблица `contract_links` (+ индексы) — `ContractLinker`
+  и `KnowledgeSummarizer` больше не падают на отсутствующей таблице.
 - **Object Diary: тесты и починка схемы** (`tests/test_object_diary.py` — 119 тестов):
   ConstraintManager, IntentClassifier, HealthScoreEngine, TemporalLogic, AlertDispatcher,
   InboxManager, KnowledgeGraph, VirtualDocuments, PreObjectTracker, ExpertTeacher,
@@ -56,6 +73,34 @@
   реализованы; 7.14/7.15 закрыты починкой и тестами).
 
 ### Fixed
+- **Багфиксы, найденные новыми тестами**:
+  - `document_ingestor.chunk_text` — бесконечный цикл при `chunk_overlap >= chunk_size`
+    и потеря последнего чанка; теперь прогресс гарантирован, текст покрывается полностью.
+  - `chroma_manager` — `where` с несколькими условиями без `$and` и пустой `where={}`
+    (ValueError в ChromaDB 1.5); `update_chunk_metadata` использовал несуществующий
+    аргумент `metadata=` вместо `metadatas=`; `legal_entities` теперь JSON с `ensure_ascii=False`.
+  - `delegation_engine` — запрос по несуществующей колонке `status` (нужен
+    `escalation_status`); `deadline_for_reply`/`answer_timestamp`/`escalation_timestamp`
+    пишутся как ISO-строки; напоминание отправляется после истечения дедлайна
+    (раньше — через 4 часа сверх него) и больше не повторяется каждый цикл.
+  - `contract_linker._load_objects` — `SELECT id` при реальной колонке `diary_id`
+    (кэш объектов всегда был пуст); матчинг по вхождению ссылки в `object_id`.
+  - `oauth_scanner.infer_document_type` — короткие ключи (`сп`, `пас`) перебивали
+    длинные (`паспорт`); теперь побеждает самое длинное совпадение.
+  - `project_ledger_manager._is_construction_object` — короткие exclude-ключи
+    (`ак`, `ос`, `кк`) вырезали валидные адреса («Судакова 5», «Сергиев Посад»);
+    для ключей ≤3 символов — совпадение только целым словом.
+  - `google_drive/scanner` — вызовы без аутентификации падали с `AttributeError`
+    (`self.service is None`); удалён мёртвый дублированный код в `list_files`.
+  - `document_info_extractor` — суммы с разделителями тысяч («1,500,000.50»,
+    «2.000.000,00», «250 000») парсились как 0.5/1.5/2.0; добавлен `_parse_amount`,
+    дедупликация, даты «15 марта 2024» и контекстные даты договора/завершения
+    (сравнение с исходным форматом, а не ISO); `заказчик`/`подрядчик`/`объект`
+    больше не захватывают следующие строки.
+  - `structured_excel_parser` — `to_markdown` требовал необъявленный `tabulate`;
+    добавлен fallback-рендер markdown-таблицы.
+  - `ollama_client.PromptTemplates.temporal_context_prompt` — `replace(day=day+1)`
+    падал в конце месяца/года; переведено на `timedelta`.
 - **Object Diary: модули писали в несуществующую схему БД** — 12 модулей падали
   на импорте/выполнении. Переписаны под реальную схему (`database.py` — источник истины):
   - `constraint_health_integration.py` — сломанный импорт `ConstraintCheckResult`/`RiskZone`
@@ -97,4 +142,5 @@
   актуальных версий (`status: actual`).
 
 ### Test results
-- **317 passed** (было 144 до изменений; +142 теста object_diary/temporal и др.).
+- **545 passed** (было 317; +228 тестов: delegation/accuracy, document pipeline,
+  LLM clients, Google Drive + financial).

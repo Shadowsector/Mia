@@ -31,29 +31,53 @@ class DocumentInfoExtractor:
     """
     
     # Patterns for financial amounts
+    _AMOUNT = r'(\d+(?:[ \u00a0.,]\d+)*)'
     AMOUNT_PATTERNS = [
-        r'(\d+[.,]\d+)\s*(?:руб|р\.|₽)',  # "1000.50 руб"
-        r'(\d+[.,]\d+)\s*(?:USD|\$)',  # "1000.50 USD"
-        r'(\d+[.,]\d+)\s*(?:EUR|€)',  # "1000.50 EUR"
-        r'сумма[:\s]+(\d+[.,]\d+)',  # "сумма: 1000.50"
-        r'итого[:\s]+(\d+[.,]\d+)',  # "итого: 1000.50"
-        r'всего[:\s]+(\d+[.,]\d+)',  # "всего: 1000.50"
+        _AMOUNT + r'\s*(?:руб|р\.|₽)',  # "1 500 000,50 руб"
+        _AMOUNT + r'\s*(?:USD|\$)',  # "1000.50 USD"
+        _AMOUNT + r'\s*(?:EUR|€)',  # "1000.50 EUR"
+        r'сумма[:\s]+' + _AMOUNT,  # "сумма: 1000.50"
+        r'итого[:\s]+' + _AMOUNT,  # "итого: 1000.50"
+        r'всего[:\s]+' + _AMOUNT,  # "всего: 1000.50"
     ]
     
     # Patterns for dates
     DATE_PATTERNS = [
         r'(\d{1,2})\.(\d{1,2})\.(\d{4})',  # DD.MM.YYYY
         r'(\d{4})-(\d{1,2})-(\d{1,2})',  # YYYY-MM-DD
-        r'(\d{1,2})\s+января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря\s+(\d{4})',
+        r'(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+(\d{4})',  # 15 марта 2024
     ]
+    
+    MONTHS_RU = {
+        'января': 1, 'февраля': 2, 'марта': 3, 'апреля': 4, 'мая': 5, 'июня': 6,
+        'июля': 7, 'августа': 8, 'сентября': 9, 'октября': 10, 'ноября': 11, 'декабря': 12,
+    }
     
     # Patterns for materials
     MATERIAL_PATTERNS = [
-        r'кабель\s+([А-Яа-я\w\d-]+)',
-        r'труба\s+([А-Яа-я\w\d-]+)',
-        r'провод\s+([А-Яа-я\w\d-]+)',
+        r'кабель\s+([А-Яа-я\w\d.\-]+)',
+        r'труба\s+([А-Яа-я\w\d.\-]+)',
+        r'провод\s+([А-Яа-я\w\d.\-]+)',
         r'(\d+)\s*(?:м|шт|кг|т)\s+(?:кабель|труба|провод)',
     ]
+    
+    @staticmethod
+    def _parse_amount(amount_str: str) -> Optional[float]:
+        """Parse amounts with spaces, thousands separators and comma decimals."""
+        cleaned = re.sub(r'[ \u00a0]', '', amount_str).strip()
+        if not cleaned:
+            return None
+        if ',' in cleaned and '.' in cleaned:
+            if cleaned.rfind(',') > cleaned.rfind('.'):
+                cleaned = cleaned.replace('.', '').replace(',', '.')
+            else:
+                cleaned = cleaned.replace(',', '')
+        else:
+            cleaned = cleaned.replace(',', '.')
+        try:
+            return float(cleaned)
+        except ValueError:
+            return None
     
     def __init__(self):
         """Initialize Document Info Extractor."""
@@ -80,12 +104,9 @@ class DocumentInfoExtractor:
         for pattern in self.AMOUNT_PATTERNS:
             matches = re.finditer(pattern, text, re.IGNORECASE)
             for match in matches:
-                amount_str = match.group(1).replace(',', '.')
-                try:
-                    amount = float(amount_str)
+                amount = self._parse_amount(match.group(1))
+                if amount is not None and amount not in financials['amounts']:
                     financials['amounts'].append(amount)
-                except ValueError:
-                    continue
         
         # Determine total (last amount or max)
         if financials['amounts']:
@@ -114,47 +135,50 @@ class DocumentInfoExtractor:
             'completion_date': None
         }
         
-        # Extract dates
+        # Extract dates (keep both ISO and raw form for context lookups)
+        found = []
         for pattern in self.DATE_PATTERNS:
-            matches = re.finditer(pattern, text, re.IGNORECASE)
-            for match in matches:
+            for match in re.finditer(pattern, text, re.IGNORECASE):
                 try:
+                    groups = match.groups()
                     if pattern.startswith(r'(\d{1,2})\.'):
-                        # DD.MM.YYYY format
-                        day, month, year = match.groups()
+                        day, month, year = groups
                         date_obj = datetime(int(year), int(month), int(day))
                     elif pattern.startswith(r'(\d{4})'):
-                        # YYYY-MM-DD format
-                        year, month, day = match.groups()
+                        year, month, day = groups
                         date_obj = datetime(int(year), int(month), int(day))
                     else:
-                        continue
-                    
-                    dates['dates_found'].append(date_obj.isoformat())
-                except (ValueError, IndexError):
+                        day, month_name, year = groups
+                        month = self.MONTHS_RU[month_name.lower()]
+                        date_obj = datetime(int(year), month, int(day))
+                except (ValueError, IndexError, KeyError):
                     continue
+                found.append((date_obj, match.group(0)))
+        
+        for date_obj, raw in found:
+            iso = date_obj.isoformat()
+            if iso not in dates['dates_found']:
+                dates['dates_found'].append(iso)
         
         # Detect contract date
-        for date_str in dates['dates_found']:
-            context_match = re.search(
-                rf'(?:дата договора|дата контракта|contract date)[:\s]+{date_str[:10]}',
+        for date_obj, raw in found:
+            if re.search(
+                rf'(?:дата договора|дата контракта|contract date)[:\s]+{re.escape(raw)}',
                 text,
                 re.IGNORECASE
-            )
-            if context_match:
-                dates['contract_date'] = date_str
+            ):
+                dates['contract_date'] = date_obj.isoformat()
                 break
         
         # Detect completion date
-        for date_str in dates['dates_found']:
-            context_match = re.search(
-                rf'(?:срок выполнения|дата завершения|completion date|deadline)[:\s]+{date_str[:10]}',
+        for date_obj, raw in found:
+            if re.search(
+                rf'(?:срок выполнения|дата завершения|completion date|deadline)[:\s]+{re.escape(raw)}',
                 text,
                 re.IGNORECASE
-            )
-            if context_match:
-                dates['completion_date'] = date_str
-                dates['deadlines'].append(date_str)
+            ):
+                dates['completion_date'] = date_obj.isoformat()
+                dates['deadlines'].append(date_obj.isoformat())
                 break
         
         return dates
@@ -221,7 +245,7 @@ class DocumentInfoExtractor:
         
         # Extract customer
         customer_match = re.search(
-            r'(?:заказчик|customer|client)[:\s]+([А-Яа-яA-Za-z\s&]+)',
+            r'(?:заказчик|customer|client)[:\s]+([А-Яа-яA-Za-z\s&]+?)(?:\n|$)',
             text,
             re.IGNORECASE
         )
@@ -230,7 +254,7 @@ class DocumentInfoExtractor:
         
         # Extract contractor
         contractor_match = re.search(
-            r'(?:подрядчик|contractor|исполнитель)[:\s]+([А-Яа-яA-Za-z\s&]+)',
+            r'(?:подрядчик|contractor|исполнитель)[:\s]+([А-Яа-яA-Za-z\s&]+?)(?:\n|$)',
             text,
             re.IGNORECASE
         )
@@ -239,7 +263,7 @@ class DocumentInfoExtractor:
         
         # Extract object name
         object_match = re.search(
-            r'(?:объект|object|строительный объект)[:\s]+([А-Яа-яA-Za-z\d\s\-]+)',
+            r'(?:объект|object|строительный объект)[:\s]+([А-Яа-яA-Za-z\d\s\-]+?)(?:\n|$)',
             text,
             re.IGNORECASE
         )

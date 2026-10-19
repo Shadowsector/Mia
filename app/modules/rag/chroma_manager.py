@@ -80,7 +80,7 @@ class ChromaManager:
             metadata["doc_date_timestamp"] = doc_date_timestamp
         
         if legal_entities:
-            metadata["legal_entities"] = json.dumps(legal_entities)
+            metadata["legal_entities"] = json.dumps(legal_entities, ensure_ascii=False)
         
         if additional_metadata:
             metadata.update(additional_metadata)
@@ -105,10 +105,12 @@ class ChromaManager:
     ) -> List[Dict[str, Any]]:
         """Поиск внутри объекта (жесткая фильтрация по object_id и is_current)"""
         
-        where_filters = {"object_id": object_id}
+        conditions = [{"object_id": object_id}]
         
         if only_current:
-            where_filters["is_current"] = 1
+            conditions.append({"is_current": 1})
+        
+        where_filters = conditions[0] if len(conditions) == 1 else {"$and": conditions}
         
         results = self.collection.query(
             query_texts=[query_text],
@@ -126,7 +128,7 @@ class ChromaManager:
     ) -> List[Dict[str, Any]]:
         """Поиск между объектами (с фильтрами по метаданным)"""
         
-        where_filters = filters if filters else {}
+        where_filters = filters if filters else None
         
         results = self.collection.query(
             query_texts=[query_text],
@@ -157,9 +159,9 @@ class ChromaManager:
         if category_weights:
             default_weights.update(category_weights)
         
-        where_filters = {}
+        where_filters = None
         if object_id:
-            where_filters["object_id"] = object_id
+            where_filters = {"object_id": object_id}
         
         results = self.collection.query(
             query_texts=[query_text],
@@ -179,9 +181,13 @@ class ChromaManager:
     ) -> bool:
         """Обновить метаданные чанка"""
         try:
+            existing = self.collection.get(ids=[chunk_id])
+            if not existing.get('ids'):
+                return False
+
             self.collection.update(
                 ids=[chunk_id],
-                metadata=metadata_updates
+                metadatas=[metadata_updates]
             )
             return True
         except Exception as e:

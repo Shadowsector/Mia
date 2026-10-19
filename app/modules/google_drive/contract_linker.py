@@ -47,7 +47,7 @@ class ContractLinker:
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT id, object_id, object_name, customer FROM objects")
+                cursor.execute("SELECT diary_id AS id, object_id, object_name, customer FROM objects")
                 for row in cursor.fetchall():
                     self.objects_cache[row['object_id']] = {
                         'id': row['id'],
@@ -95,6 +95,11 @@ class ContractLinker:
             # Direct ID match
             if object_ref in self.objects_cache:
                 return self.objects_cache[object_ref]
+            
+            # ID contains the reference (e.g. "123" -> "OBJ-123")
+            for obj_id, obj_data in self.objects_cache.items():
+                if object_ref.lower() in obj_data['object_id'].lower():
+                    return obj_data
             
             # Partial name match
             for obj_id, obj_data in self.objects_cache.items():

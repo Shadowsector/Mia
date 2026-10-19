@@ -240,7 +240,16 @@ class ProjectLedgerManager:
         
         folder_lower = folder_name.lower()
         for keyword in exclude_keywords:
-            if keyword in folder_lower:
+            # Short abbreviations (ак, ос, кк, ...) must match as standalone
+            # tokens, otherwise they eat legitimate street names like
+            # "Судакова" (ак) or "Сергиев Посад" (ос).
+            if len(keyword) <= 3:
+                if re.search(
+                    rf'(?<![А-Яа-яA-Za-z]){re.escape(keyword)}(?![А-Яа-яA-Za-z])',
+                    folder_lower,
+                ):
+                    return False
+            elif keyword in folder_lower:
                 return False
         
         # Exclude "РД" patterns (e.g., "РД 2024", "РД 2024 г")

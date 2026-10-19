@@ -139,6 +139,12 @@
   (tests/test_object_diary.py, 119 тестов; добавлены таблицы `object_events`/`invoices`;
   constraint_manager/virtual_documents/expert_teacher/telegram_distiller/contract_analyzer
   переписаны под реальную схему; tests/test_temporal_module.py, 23 теста)
+- [x] 8.26 Тесты 15 непокрытых модулей `app/modules/` (delegation, accuracy, RAG, LLM,
+  Google Drive, financial) + найденные баги - COMPLETED
+  (tests/test_delegation_accuracy.py 29, test_document_pipeline.py 93,
+  test_llm_clients.py 38, test_google_drive_financial.py 68; добавлена таблица
+  `contract_links`; починены chunk_text, ChromaDB where/update, delegation escalation,
+  contract linker, scanner без аутентификации, парсинг сумм/дат, Excel markdown fallback)
 
 ## [✅] ЭТАП 9: Критические исправления (RFC: rfc_mia_fixes.md)
 - RFC: docs/rfc_mia_fixes.md

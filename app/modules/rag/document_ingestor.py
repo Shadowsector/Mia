@@ -50,16 +50,16 @@ class DocumentIngestor:
             return []
         
         chunks = []
+        text_length = len(text)
         start = 0
         
-        while start < len(text):
-            end = start + self.chunk_size
+        while start < text_length:
+            end = min(start + self.chunk_size, text_length)
             
-            # Try to break at sentence boundary
-            if end < len(text):
-                # Look for sentence ending punctuation
+            # Try to break at sentence boundary (never before start, so progress is guaranteed)
+            if end < text_length:
                 for delimiter in ['.', '!', '?', '\n']:
-                    last_delim = text.rfind(delimiter, start, end)
+                    last_delim = text.rfind(delimiter, start + 1, end)
                     if last_delim > start:
                         end = last_delim + 1
                         break
@@ -68,7 +68,11 @@ class DocumentIngestor:
             if chunk:
                 chunks.append(chunk)
             
-            start = end - self.chunk_overlap
+            if end >= text_length:
+                break
+            
+            next_start = end - self.chunk_overlap
+            start = next_start if next_start > start else end
         
         return chunks
     

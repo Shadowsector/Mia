@@ -258,6 +258,7 @@ Recommendation → G8 Approval → Remediation Application
 - `virtual_documents`: Expected-but-not-yet-received documents
 - `object_events`: Diary event stream (deadlines, risks, status changes)
 - `invoices`: Financial ledger entries per object
+- `contract_links`: Contract-to-object links with confidence and verification metadata
 - `document_links`: Document-to-object links with citation metadata
 
 **Project Ledger Schema**:
@@ -748,7 +749,11 @@ C:\mia\
 │   ├── test_state_replay_overrides.py # Ledger replay / overrides (17 tests)
 │   ├── test_document_classifier.py    # Google Drive classifier (31 tests)
 │   ├── test_object_diary.py       # Object Diary modules (119 tests)
-│   └── test_temporal_module.py    # Temporal module (23 tests)
+│   ├── test_temporal_module.py    # Temporal module (23 tests)
+│   ├── test_delegation_accuracy.py    # Delegation engine / accuracy contour (29 tests)
+│   ├── test_document_pipeline.py      # Parsers, extractor, RAG ingestion (93 tests)
+│   ├── test_llm_clients.py            # Ollama client / llama.cpp manager (38 tests)
+│   └── test_google_drive_financial.py # Drive ledger, contracts, finance (68 tests)
 ├── config/
 │   ├── settings.py                # Configuration management
 │   └── runtime.py                # Runtime configuration

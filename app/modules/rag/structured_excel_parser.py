@@ -110,7 +110,11 @@ class StructuredExcelParser:
             cleaned_records.append(cleaned)
         
         # Convert to markdown table
-        markdown_table = df.to_markdown(index=False)
+        try:
+            markdown_table = df.to_markdown(index=False)
+        except ImportError:
+            # tabulate is optional; build a simple markdown table manually
+            markdown_table = self._dataframe_to_markdown(df)
         
         # Extract numeric columns for metadata
         numeric_columns = df.select_dtypes(include=['number']).columns.tolist()
@@ -137,6 +141,24 @@ class StructuredExcelParser:
             'json_data': json.dumps(cleaned_records, ensure_ascii=False, default=str)
         }
     
+    @staticmethod
+    def _dataframe_to_markdown(df: "pd.DataFrame") -> str:
+        """Render a DataFrame as a markdown table without the tabulate dependency."""
+        columns = [str(c) for c in df.columns]
+
+        def cell(value):
+            if pd.isna(value):
+                return ""
+            return str(value).replace("|", "\\|").replace("\n", " ")
+
+        lines = [
+            "| " + " | ".join(columns) + " |",
+            "| " + " | ".join("---" for _ in columns) + " |",
+        ]
+        for _, row in df.iterrows():
+            lines.append("| " + " | ".join(cell(v) for v in row.tolist()) + " |")
+        return "\n".join(lines)
+
     def extract_estimate_summary(self, structured_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Extract summary from estimate data.
