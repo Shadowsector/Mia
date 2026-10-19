@@ -327,6 +327,11 @@ Intent Detection → Response Generation → Telegram Reply
 - Dialog memory: `ConversationMemory` keeps recent `user`/`assistant` turns per chat
   (bounded by turns/length) and feeds them into `/v1/chat/completions`; any plain text
   is handled without commands.
+- Object queries: `ObjectQueryRouter` (`app/modules/object_diary/object_query.py`)
+  understands free-form requests — spend, purchases, blockers, document presence
+  (e.g. «есть ли ОАТИ по Новопоселковой») — resolves an object by name incl. Russian
+  declensions (Cyrillic-safe) and answers from `invoices`/`constraints`/`virtual_documents`.
+  Unknown object → falls back to normal LLM answer.
 - Commands: `/start`, `/help`, `/status`, `/here`, `/reset` (clears dialog context).
 - **Safety**: `TELEGRAM_ALLOWLIST_ONLY=true` (default) — outgoing messages go only
   to `TELEGRAM_OWNER_CHAT_ID`; all other recipients are blocked and logged. If the
@@ -805,10 +810,11 @@ C:\mia\
 │   ├── test_stub_integrations.py      # De-stubbed integrations (25 tests)
 │   ├── test_llama_cpp_client.py       # llama.cpp client (23 tests)
 │   ├── test_telegram_sender.py        # TelegramSender adapter (9 tests)
-│   ├── test_bot_assistant.py          # PM OS assistant + dialog memory (19 tests)
+│   ├── test_bot_assistant.py          # PM OS assistant + memory + routing (22 tests)
 │   ├── test_alert_dispatcher_wiring.py # PM OS alert wiring (3 tests)
 │   ├── test_seed_roles.py             # system_roles seeding (4 tests)
 │   ├── test_llama_embeddings.py       # llama.cpp ChromaDB embeddings (6 tests)
+│   ├── test_object_query.py           # free-form object queries (13 tests)
 │   └── test_google_drive_financial.py # Drive ledger, contracts, finance (68 tests)
 ├── config/
 │   ├── settings.py                # Configuration management

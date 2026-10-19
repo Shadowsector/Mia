@@ -15,6 +15,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from app.modules.llm.llama_cpp_client import LlamaCppClient, LlamaCppError
+from app.modules.object_diary.object_query import ObjectQueryRouter
 
 logger = logging.getLogger(__name__)
 
@@ -71,10 +72,12 @@ class PmOsAssistant:
         llm: Optional[LlamaCppClient] = None,
         delegation: Any = None,
         memory: Optional[ConversationMemory] = None,
+        router: Optional[ObjectQueryRouter] = None,
     ) -> None:
         self.llm = llm or LlamaCppClient()
         self.delegation = delegation
         self.memory = memory or ConversationMemory()
+        self.router = router or ObjectQueryRouter()
 
     # ------------------------------------------------------------------
     # Публичная точка входа
@@ -99,6 +102,10 @@ class PmOsAssistant:
         if delegated is not None:
             return delegated
 
+        routed = self._maybe_route(text)
+        if routed is not None:
+            return routed
+
         key = (
             str(chat_id)
             if chat_id is not None
@@ -120,6 +127,15 @@ class PmOsAssistant:
     # ------------------------------------------------------------------
     # Шаги
     # ------------------------------------------------------------------
+    def _maybe_route(self, text: str) -> Optional[str]:
+        if self.router is None:
+            return None
+        try:
+            return self.router.query(text)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("ObjectQueryRouter failed: %s", e)
+            return None
+
     def _maybe_intercept_answer(self, text: str, user_id: Optional[int]) -> Optional[str]:
         if self.delegation is None or user_id is None:
             return None

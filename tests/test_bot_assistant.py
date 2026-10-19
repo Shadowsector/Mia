@@ -82,7 +82,11 @@ def assistant():
 
     llama = FakeLlama()
     delegation = FakeDelegation()
-    return PmOsAssistant(llm=llama, delegation=delegation), llama, delegation
+    return (
+        PmOsAssistant(llm=llama, delegation=delegation, router=None),
+        llama,
+        delegation,
+    )
 
 
 class TestChat:
@@ -248,3 +252,35 @@ class TestHistory:
 
         a = PmOsAssistant(llm=OnlyComplete(), delegation=None)
         assert a.handle_text("привет", chat_id=1) == "ok"
+
+
+class FakeRouter:
+    def __init__(self, reply="ОТВЕТ РОУТЕРА", match="потрачено"):
+        self.reply = reply
+        self.match = match
+
+    def query(self, text):
+        return self.reply if self.match in text else None
+
+
+class TestRouting:
+    def test_router_answer_used(self):
+        from app.bot.assistant import PmOsAssistant
+
+        a = PmOsAssistant(llm=FakeLlama(), delegation=None, router=FakeRouter())
+        assert a.handle_text("сколько потрачено по объекту X") == "ОТВЕТ РОУТЕРА"
+
+    def test_router_none_falls_to_chat(self):
+        from app.bot.assistant import PmOsAssistant
+
+        a = PmOsAssistant(llm=FakeLlama(reply="ок"), delegation=None, router=FakeRouter())
+        assert a.handle_text("привет") == "ок"
+
+    def test_delegation_takes_priority_over_router(self):
+        from app.bot.assistant import PmOsAssistant
+
+        d = FakeDelegation(request=_request(), candidates=[{"user_id": 7}])
+        a = PmOsAssistant(llm=FakeLlama(), delegation=d, router=FakeRouter())
+        reply = a.handle_text("спроси у Светы, сколько потрачено")
+        assert "Передала вопрос Света" in reply
+        assert len(d.delegated) == 1
