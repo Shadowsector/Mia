@@ -1,9 +1,21 @@
 """Accuracy Contour Manager - Triple Audit for Deadlines and Metrics - RFC v1.9"""
 
-from typing import Optional, List, Dict, Any
+import asyncio
+import concurrent.futures
+import json
+import logging
+import re
+from typing import Optional, List, Dict, Any, Callable, Awaitable
 from datetime import datetime
 import networkx as nx
 from enum import Enum
+
+from app.modules.llm.ollama_client import PromptTemplates
+
+logger = logging.getLogger(__name__)
+
+_AMOUNT_RE = re.compile(r"\d[\d\s]{3,}(?:[.,]\d+)?")
+_DATE_RE = re.compile(r"\b(\d{2})[.\-/](\d{2})[.\-/](\d{4})\b")
 
 
 class CheckStatus(str, Enum):
@@ -58,12 +70,39 @@ class ConsensusResult:
 class AccuracyContourManager:
     """Контур точности: Тройной перекрестный аудит дедлайнов и показателей"""
     
-    def __init__(self):
+    def __init__(self, llm_client=None, model: str = "qwen2.5:14b-instruct-q4_K_M"):
+        """
+        Args:
+            llm_client: экземпляр `OllamaClient` для Метода 3 (анализ переписки).
+            model: модель Ollama для анализа Telegram-чата.
+        """
         # Инициализация NetworkX графа для Метода 1
         self.dependency_graph = nx.DiGraph()
-        
+
+        self.llm_client = llm_client
+        self.model = model
+
         # Определение правил строительного ГОСТа и регламентов
         self.regulatory_rules = self._initialize_regulatory_rules()
+
+    def _run_async(self, factory: Callable[[], Awaitable[Any]]) -> Any:
+        """Выполнить async-вызов LLM из синхронного кода."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(factory())
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            return executor.submit(lambda: asyncio.run(factory())).result()
+
+    @staticmethod
+    def _extract_facts(text: str) -> Dict[str, List[str]]:
+        """Выделить суммы и даты из текста для сравнения документов."""
+        text = text or ""
+        return {
+            "amounts": {m.group(0).replace(" ", "").replace(",", ".") for m in _AMOUNT_RE.finditer(text)},
+            "dates": {".".join(m.groups()) for m in _DATE_RE.finditer(text)},
+        }
     
     def _initialize_regulatory_rules(self) -> Dict[str, List[str]]:
         """Инициализация неизменных правил строительного ГОСТа и регламентов"""
@@ -154,17 +193,127 @@ class AccuracyContourManager:
         Находит аномалии во времени и деньгах
         """
         result = Method2Result()
-        
-        # TODO: Интеграция с ChromaManager для поиска аномалий
-        # Поиск по reference_documents в RAG
-        # Сравнение с specification_text
-        
-        # Временная заглушка
-        result.status = CheckStatus.OK
-        result.anomalies = []
-        result.confidence = 0.8
-        
+
+        reference_texts = self._collect_reference_texts(reference_documents, rag_manager)
+
+        if not reference_texts:
+            # RAG недоступен или не вернул контекст → прежнее безопасное поведение
+            result.status = CheckStatus.OK
+            result.anomalies = []
+            result.confidence = 0.8
+            return result
+
+        spec_facts = self._extract_facts(specification_text or "")
+
+        anomalies: List[Dict[str, Any]] = []
+        matched = 0
+        for doc_index, ref_text in enumerate(reference_texts):
+            ref_facts = self._extract_facts(ref_text)
+
+            for amount in spec_facts["amounts"]:
+                if ref_facts["amounts"] and amount not in ref_facts["amounts"]:
+                    anomalies.append({
+                        "type": "amount_mismatch",
+                        "description": (
+                            f"Сумма {amount} из спецификации отсутствует в "
+                            f"справочном документе #{doc_index}"
+                        ),
+                        "source": reference_documents[doc_index]
+                        if doc_index < len(reference_documents) else str(doc_index),
+                        "value": amount,
+                    })
+                elif amount in ref_facts["amounts"]:
+                    matched += 1
+
+            for date in spec_facts["dates"]:
+                if ref_facts["dates"] and date not in ref_facts["dates"]:
+                    anomalies.append({
+                        "type": "date_mismatch",
+                        "description": (
+                            f"Дата {date} из спецификации не совпадает со "
+                            f"справочным документом #{doc_index}"
+                        ),
+                        "source": reference_documents[doc_index]
+                        if doc_index < len(reference_documents) else str(doc_index),
+                        "value": date,
+                    })
+                elif date in ref_facts["dates"]:
+                    matched += 1
+
+        result.anomalies = anomalies
+        result.status = CheckStatus.WARNING if anomalies else CheckStatus.OK
+        total_tokens = len(spec_facts["amounts"]) + len(spec_facts["dates"])
+        coverage = (matched / total_tokens) if total_tokens else 1.0
+        result.confidence = round(min(0.95, 0.5 + 0.45 * coverage), 2)
+
         return result
+
+    @staticmethod
+    def _collect_reference_texts(
+        reference_documents: List[str],
+        rag_manager
+    ) -> List[str]:
+        """
+        Получить текст справочных документов через RAG-менеджер.
+        Поддерживаются методы `search_between_objects`, `query`, `search`.
+        """
+        if rag_manager is None or reference_documents is None:
+            return []
+
+        search = None
+        for method_name in ("search_between_objects", "query", "search"):
+            candidate = getattr(rag_manager, method_name, None)
+            if callable(candidate):
+                search = candidate
+                break
+
+        if search is None:
+            return []
+
+        texts: List[str] = []
+        for doc in reference_documents:
+            try:
+                raw = search(query=doc, n_results=3)
+            except TypeError:
+                try:
+                    raw = search(doc)
+                except Exception as e:  # pragma: no cover - defensive
+                    logger.warning(f"RAG query failed for '{doc}': {e}")
+                    continue
+            except Exception as e:  # pragma: no cover - defensive
+                logger.warning(f"RAG query failed for '{doc}': {e}")
+                continue
+
+            texts.extend(AccuracyContourManager._extract_texts(raw))
+
+        return texts
+
+    @staticmethod
+    def _extract_texts(raw: Any) -> List[str]:
+        """Нормализовать произвольный ответ RAG-менеджера в список строк."""
+        if raw is None:
+            return []
+        if isinstance(raw, str):
+            return [raw]
+        if isinstance(raw, dict):
+            for key in ("documents", "texts", "results", "matches"):
+                if key in raw:
+                    return AccuracyContourManager._extract_texts(raw[key])
+            return []
+        if isinstance(raw, (list, tuple)):
+            out: List[str] = []
+            for item in raw:
+                if isinstance(item, str):
+                    out.append(item)
+                elif isinstance(item, dict):
+                    for key in ("document", "text", "content"):
+                        if isinstance(item.get(key), str):
+                            out.append(item[key])
+                            break
+                elif isinstance(item, (list, tuple)):
+                    out.extend(AccuracyContourManager._extract_texts(item))
+            return out
+        return []
     
     # ==================== Метод 3: Анализатор Временных Сдвигов ====================
     
@@ -180,18 +329,90 @@ class AccuracyContourManager:
         Ловит неформальные дедлайны и перемещения
         """
         result = Method3Result()
-        
-        # TODO: Интеграция с OllamaClient для анализа Telegram
-        # Извлечение неформальных дедлайнов из чата
-        # Сопоставление с официальными документами
-        # Возможность наложить BYPASS_STRICT_RULE на Метод 1
-        
-        # Временная заглушка
-        result.status = CheckStatus.OK
-        result.informal_deadlines = []
-        result.chat_derived_facts = []
-        
+
+        if not telegram_messages or self.llm_client is None:
+            result.status = CheckStatus.OK
+            result.informal_deadlines = []
+            result.chat_derived_facts = []
+            return result
+
+        chat_text = self._render_messages(telegram_messages)
+        prompt = PromptTemplates.informal_deadline_prompt(chat_text)
+
+        data: Dict[str, Any] = {}
+        try:
+            data = self._run_async(
+                lambda: self.llm_client.generate_json(prompt, model=self.model)
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning(f"Method 3 LLM call failed: {e}")
+            data = {}
+
+        if not isinstance(data, dict):
+            data = {}
+
+        deadlines = data.get("informal_deadlines") or []
+        if not isinstance(deadlines, list):
+            deadlines = []
+
+        result.informal_deadlines = [d for d in deadlines if isinstance(d, dict)]
+        result.chat_derived_facts = [
+            d for d in result.informal_deadlines if d.get("type") == "fact"
+        ]
+
+        # Сопоставление с официальными документами: ищем неформальные сдвиги,
+        # которых нет в реестре официальных дат.
+        official_dates = set()
+        for doc in official_documents or []:
+            official_dates |= self._extract_facts(
+                doc.get("text", "") if isinstance(doc, dict) else str(doc)
+            )["dates"]
+
+        conflicts = []
+        for item in result.informal_deadlines:
+            date = item.get("date")
+            if date:
+                normalized = self._normalize_date(date)
+                if normalized and normalized not in official_dates:
+                    conflicts.append(item)
+
+        if conflicts:
+            result.status = CheckStatus.WARNING
+            result.bypass_strict_rule = True
+            result.bypass_reason = (
+                f"Неформальные дедлайны ({len(conflicts)}) противоречат официальному реестру"
+            )
+        else:
+            result.status = CheckStatus.OK
+
         return result
+
+    @staticmethod
+    def _render_messages(messages: List[Dict[str, Any]]) -> str:
+        """Собрать текст переписки из списка сообщений."""
+        lines = []
+        for msg in messages:
+            if isinstance(msg, str):
+                lines.append(msg)
+            elif isinstance(msg, dict):
+                lines.append(
+                    str(msg.get("text") or msg.get("message") or msg.get("body") or msg)
+                )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _normalize_date(value: str) -> Optional[str]:
+        """Привести дату к формату DD.MM.YYYY, если возможно."""
+        if not value:
+            return None
+        iso = re.match(r"(\d{4})-(\d{2})-(\d{2})", str(value))
+        if iso:
+            y, m, d = iso.groups()
+            return f"{d}.{m}.{y}"
+        dmy = re.match(r"(\d{2})[.\-/](\d{2})[.\-/](\d{4})", str(value))
+        if dmy:
+            return ".".join(dmy.groups())
+        return None
     
     # ==================== Консенсус-Арбитр ====================
     

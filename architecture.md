@@ -753,6 +753,7 @@ C:\mia\
 │   ├── test_delegation_accuracy.py    # Delegation engine / accuracy contour (29 tests)
 │   ├── test_document_pipeline.py      # Parsers, extractor, RAG ingestion (93 tests)
 │   ├── test_llm_clients.py            # Ollama client / llama.cpp manager (38 tests)
+│   ├── test_stub_integrations.py      # De-stubbed integrations (25 tests)
 │   └── test_google_drive_financial.py # Drive ledger, contracts, finance (68 tests)
 ├── config/
 │   ├── settings.py                # Configuration management

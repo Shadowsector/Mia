@@ -32,55 +32,138 @@ class FinancialLedgerIntegration:
     def __init__(self, integration_type: str = "mock"):
         """
         Initialize Financial Ledger Integration.
-        
+
         Args:
-            integration_type: Type of integration ("mock", "1c", "erp")
+            integration_type: Type of integration:
+                - "mock": deterministic demo data;
+                - "local": read real data from the local SQLite `invoices` table;
+                - "1c" / "erp": HTTP connector to an external system (see `connect`).
         """
         self.integration_type = integration_type
         self.connection = None
-        
+        self.config: Dict[str, Any] = {}
+
         if integration_type == "mock":
             logger.info("Financial Ledger Integration initialized in MOCK mode")
+        elif integration_type == "local":
+            logger.info("Financial Ledger Integration initialized in LOCAL (SQLite) mode")
         else:
-            logger.warning(f"Integration type {integration_type} not fully implemented")
-    
+            logger.info(
+                f"Financial Ledger Integration initialized for '{integration_type}' "
+                f"HTTP mode (call connect() with config before use)"
+            )
+
     def connect(self, config: Dict[str, Any]) -> bool:
         """
         Connect to financial system.
-        
+
         Args:
-            config: Connection configuration
-            
+            config: Connection configuration. For HTTP integrations ("1c"/"erp"):
+                {"base_url": "...", "token": "...", "timeout": 10}
+
         Returns:
             True if successful
         """
         if self.integration_type == "mock":
             logger.info("Mock connection successful")
             return True
-        
-        # TODO: Implement actual 1C/ERP connection
-        logger.warning(f"Connection to {self.integration_type} not implemented")
-        return False
-    
+
+        if self.integration_type == "local":
+            try:
+                from app.modules.storage.database import get_db_connection
+
+                with get_db_connection() as conn:
+                    conn.execute("SELECT 1").fetchone()
+                self.connection = {"type": "sqlite"}
+                logger.info("Local SQLite ledger connection successful")
+                return True
+            except Exception as e:
+                logger.error(f"Local ledger connection failed: {e}")
+                return False
+
+        base_url = (config or {}).get("base_url")
+        if not base_url:
+            logger.warning(f"{self.integration_type} connection requires 'base_url'")
+            return False
+
+        try:
+            import requests
+
+            timeout = (config or {}).get("timeout", 10)
+            headers = {}
+            if config.get("token"):
+                headers["Authorization"] = f"Bearer {config['token']}"
+
+            response = requests.get(f"{base_url}/health", headers=headers, timeout=timeout)
+            if response.status_code >= 400:
+                logger.warning(
+                    f"{self.integration_type} health-check returned {response.status_code}"
+                )
+                return False
+
+            self.config = dict(config)
+            self.connection = {"type": "http", "base_url": base_url, "headers": headers}
+            logger.info(f"Connected to {self.integration_type} at {base_url}")
+            return True
+        except Exception as e:
+            logger.error(f"Connection to {self.integration_type} failed: {e}")
+            return False
+
+    def _http_get(self, path: str, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Выполнить GET-запрос к внешней финансовой системе."""
+        if not self.connection or self.connection.get("type") != "http":
+            logger.warning(f"{self.integration_type}: not connected")
+            return []
+
+        try:
+            import requests
+
+            url = f"{self.connection['base_url']}{path}"
+            response = requests.get(
+                url,
+                params=params,
+                headers=self.connection.get("headers", {}),
+                timeout=self.config.get("timeout", 10),
+            )
+            if response.status_code >= 400:
+                logger.warning(f"{self.integration_type} {path} returned {response.status_code}")
+                return []
+
+            data = response.json()
+            if isinstance(data, dict):
+                data = data.get("items") or data.get("data") or []
+            return data if isinstance(data, list) else []
+        except Exception as e:
+            logger.error(f"{self.integration_type} {path} failed: {e}")
+            return []
+
     def get_payments(self, object_id: str, start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
         """
         Get payments for an object within date range.
-        
+
         Args:
             object_id: Object ID
             start_date: Start date
             end_date: End date
-            
+
         Returns:
             List of payments
         """
         if self.integration_type == "mock":
             # Return mock data
             return self._get_mock_payments(object_id, start_date, end_date)
-        
-        # TODO: Implement actual 1C/ERP query
-        logger.warning(f"get_payments not implemented for {self.integration_type}")
-        return []
+
+        if self.integration_type == "local":
+            return self._get_local_records(
+                object_id, start_date, end_date,
+                statuses=(PaymentStatus.PAID.value, PaymentStatus.PARTIALLY_PAID.value),
+            )
+
+        return self._http_get("/payments", {
+            "object_id": object_id,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+        })
     
     def _get_mock_payments(self, object_id: str, start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
         """Get mock payment data for testing."""
@@ -105,23 +188,59 @@ class FinancialLedgerIntegration:
         
         return mock_payments
     
+    def _get_local_records(
+        self,
+        object_id: str,
+        start_date: datetime,
+        end_date: datetime,
+        statuses: Optional[tuple] = None,
+    ) -> List[Dict[str, Any]]:
+        """Прочитать финансовые записи из локальной таблицы `invoices`."""
+        try:
+            from app.modules.storage.database import get_db_connection
+
+            query = (
+                "SELECT invoice_id, object_id, amount, date, status, description "
+                "FROM invoices WHERE object_id = ? AND date >= ? AND date <= ?"
+            )
+            params: List[Any] = [object_id, start_date.isoformat(), end_date.isoformat()]
+
+            if statuses:
+                placeholders = ",".join("?" for _ in statuses)
+                query += f" AND status IN ({placeholders})"
+                params.extend(statuses)
+
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(query, tuple(params))
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Local ledger read failed for {object_id}: {e}")
+            return []
+
     def get_invoices(self, object_id: str, start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
         """
         Get invoices for an object within date range.
-        
+
         Args:
             object_id: Object ID
             start_date: Start date
             end_date: End date
-            
+
         Returns:
             List of invoices
         """
         if self.integration_type == "mock":
             return self._get_mock_invoices(object_id, start_date, end_date)
-        
-        logger.warning(f"get_invoices not implemented for {self.integration_type}")
-        return []
+
+        if self.integration_type == "local":
+            return self._get_local_records(object_id, start_date, end_date)
+
+        return self._http_get("/invoices", {
+            "object_id": object_id,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+        })
     
     def _get_mock_invoices(self, object_id: str, start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
         """Get mock invoice data for testing."""

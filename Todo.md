@@ -145,6 +145,10 @@
   test_llm_clients.py 38, test_google_drive_financial.py 68; добавлена таблица
   `contract_links`; починены chunk_text, ChromaDB where/update, delegation escalation,
   contract linker, scanner без аутентификации, парсинг сумм/дат, Excel markdown fallback)
+- [x] 8.27 Замена заглушек реальной интеграцией - COMPLETED
+  (DelegationEngine: LLM-парсинг + Telegram + Inbox-задача; AccuracyContour метод 2/3;
+  temporal AlertDispatcher + TemporalAlertIntegration (HealthScore/Diary/cron);
+  FinancialLedgerIntegration: local SQLite + HTTP 1C/ERP; tests/test_stub_integrations.py, 25 тестов)
 
 ## [✅] ЭТАП 9: Критические исправления (RFC: rfc_mia_fixes.md)
 - RFC: docs/rfc_mia_fixes.md

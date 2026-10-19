@@ -3,6 +3,24 @@
 ## 2026-10-19
 
 ### Added
+- **Замена заглушек реальной интеграцией** (item 2; тесты — `tests/test_stub_integrations.py`, 25):
+  - `DelegationEngine` — LLM-парсинг запроса (`PromptTemplates.delegation_extraction_prompt`),
+    классификация ответа vs трёп (`delegation_answer_classifier_prompt`), создание задачи
+    в Inbox (`questions_gateway`) при неоднозначном имени, отправка через инъектируемый
+    `telegram_sender` (`send`, `can_send_private` → PRIVATE/PUBLIC, @упоминание), fallback
+    в лог без Telegram.
+  - `AccuracyContourManager` — Метод 2 реально ищет справочные документы в RAG
+    (`search_between_objects`/`query`/`search`) и сравнивает суммы/даты спецификации
+    (аномалии `amount_mismatch`/`date_mismatch`); Метод 3 через Ollama извлекает
+    неформальные дедлайны и накладывает BYPASS при конфликте с официальным реестром.
+  - `temporal.AlertDispatcher` — дайджест (10:00) и критические алерты (16:00) на основе
+    `HealthScoreEngine`, cron-задачи через `TemporalLogicManager`, отправка через
+    `telegram_sender`; `AlertSchema` получил реальные значения по умолчанию.
+  - `TemporalAlertIntegration` — дайджест собирает события дня из `DiaryManager` и статус
+    из `HealthScoreEngine`; критический отчёт учитывает RED-объекты и блокирующие
+    ограничения (`constraints.status = 'NOT_SATISFIED'`).
+  - `FinancialLedgerIntegration` — источник `local` (реальное чтение таблицы `invoices`)
+    и HTTP-коннектор `1c`/`erp` (`connect({base_url, token})` + `/payments`, `/invoices`).
 - **Покрытие тестами 15 ранее непокрытых модулей** (+228 тестов):
   - `tests/test_delegation_accuracy.py` — 29 тестов: `DelegationEngine` (парсинг запроса,
     поиск по `system_roles`, разрешение неоднозначности, делегирование, перехват ответа,
@@ -142,5 +160,5 @@
   актуальных версий (`status: actual`).
 
 ### Test results
-- **545 passed** (было 317; +228 тестов: delegation/accuracy, document pipeline,
-  LLM clients, Google Drive + financial).
+- **570 passed** (было 317 в начале дня; +253 теста): покрытие 15 модулей (+228),
+  интеграционные тесты de-stub (+25).

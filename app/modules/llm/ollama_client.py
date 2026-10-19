@@ -238,6 +238,70 @@ Process the user's request with awareness of the current time and relative date 
 """
     
     @staticmethod
+    def delegation_extraction_prompt(text: str, context: str) -> str:
+        """Промпт для динамической делегации («Спроси у Светы»)"""
+        return f"""
+You extract a delegation request from a construction manager's message.
+
+Message: "{text}"
+Context (object): {context}
+
+Return JSON:
+{{
+    "is_delegation": true,
+    "target_name": "Name of the person to ask",
+    "question": "The actual question to delegate",
+    "object_id": "{context}",
+    "requester_id": "Who is asking",
+    "confidence": 0.9
+}}
+
+If the message does not ask to delegate a question to another person, set "is_delegation" to false.
+"""
+
+    @staticmethod
+    def delegation_answer_classifier_prompt(message: str) -> str:
+        """Промпт для классификации: ответ на вопрос или обычный трёп"""
+        return f"""
+A delegated question was sent to a colleague. Classify their reply.
+
+Reply: "{message}"
+
+Return JSON:
+{{
+    "is_answer": true,
+    "reason": "short explanation",
+    "confidence": 0.9
+}}
+
+Set "is_answer" to false only for greetings, memes, reactions or unrelated chatter.
+"""
+
+    @staticmethod
+    def informal_deadline_prompt(messages_text: str) -> str:
+        """Промпт для извлечения неформальных дедлайнов из переписки Telegram"""
+        return f"""
+Read the construction site Telegram chat and extract informal deadlines, schedule shifts
+and informal facts (e.g. "we started digging", "moved to Friday").
+
+Chat:
+{messages_text}
+
+Return JSON:
+{{
+    "informal_deadlines": [
+        {{
+            "description": "what was promised",
+            "raw_text": "original phrase",
+            "date": "YYYY-MM-DD or null",
+            "type": "deadline or fact",
+            "confidence": 0.8
+        }}
+    ]
+}}
+"""
+
+    @staticmethod
     def few_shot_rag_prompt(
         spec_text: str,
         relevant_lessons: List[str]
