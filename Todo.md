@@ -180,8 +180,9 @@
   `app/modules/rag/llama_embeddings.py` (ChromaDB EF);
   `ChromaManager(embedding_function=...)` + `get_default_embedding_function`
   (llama по умолчанию, ollama — легаси через `EMBED_BACKEND`);
-  `LlamaCppManager.start_server(embeddings=True)`; настройки `LLAMA_EMBED_URL`/
-  `EMBED_BACKEND`; проверено вживую add/search; +11 тестов, всего 650)
+  `LlamaCppManager.start_server(embeddings=True, pooling="cls")`; настройки `LLAMA_EMBED_URL`/
+  `EMBED_BACKEND`; автозапуск embedding-сервера из GUI (CPU, 8081, пропуск если уже
+  запущен); проверено вживую add/search + автозапуск (dim 1024); +13 тестов, всего 652)
 
 ## [✅] ЭТАП 9: Критические исправления (RFC: rfc_mia_fixes.md)
 - RFC: docs/rfc_mia_fixes.md

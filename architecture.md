@@ -335,9 +335,12 @@ Intent Detection → Response Generation → Telegram Reply
 
 **Embeddings / RAG (llama.cpp)**: a dedicated `llama-server --embedding --pooling cls`
 on port 8081 serves **bge-m3** (`C:\models\bge-m3-Q8_0.gguf`, dim 1024) via
-`start_embed_server.bat`. `ChromaManager` uses `LlamaCppEmbeddingFunction`
-(`app/modules/rag/llama_embeddings.py`) → `/v1/embeddings`; Ollama remains as a
-legacy backend via `EMBED_BACKEND=ollama`.
+`start_embed_server.bat`. The GUI (`mia_gui_redesigned.py`) **auto-starts** this server
+on launch (`start_embed_server`/`_run_embed_server`, CPU-only, `n_gpu_layers=0`,
+`ctx=512`) and skips it if the port already answers; it is stopped on GUI exit.
+Config keys: `embed_model_path`, `llama_embed_port`. `ChromaManager` uses
+`LlamaCppEmbeddingFunction` (`app/modules/rag/llama_embeddings.py`) → `/v1/embeddings`;
+Ollama remains as a legacy backend via `EMBED_BACKEND=ollama`.
 
 ### 9. Memory System (`mia/memory/`)
 

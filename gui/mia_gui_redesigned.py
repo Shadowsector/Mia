@@ -143,6 +143,8 @@ class MiaGUI:
         
         # System state
         self.llama_process = None
+        self.llama_manager = None
+        self.embed_manager = None
         self.telegram_process = None
         self.is_running = False
         
@@ -167,6 +169,9 @@ class MiaGUI:
         # Start llama.cpp
         self.start_llama_cpp()
         
+        # Start dedicated embedding server for RAG (separate port)
+        self.start_embed_server()
+        
         # Start refresh timer
         self.refresh_timer()
     
@@ -176,7 +181,9 @@ class MiaGUI:
         default_config = {
             "llama_cpp_path": r"C:\llama.cpp\llama-server.exe",
             "model_path": r"C:\models\Qwen2.5-14B-Instruct-Q4_K_M.gguf",
+            "embed_model_path": r"C:\models\bge-m3-Q8_0.gguf",
             "llama_port": 8080,
+            "llama_embed_port": 8081,
             "telegram_enabled": False
         }
         
@@ -596,7 +603,7 @@ class MiaGUI:
                 return
             
             # Stop any existing llama.cpp process
-            if hasattr(self, 'llama_manager') and self.llama_manager.process:
+            if self.llama_manager and self.llama_manager.process:
                 print("DEBUG: Stopping existing llama.cpp process")
                 self.llama_manager.stop_server()
             
@@ -657,6 +664,60 @@ class MiaGUI:
             import traceback
             traceback.print_exc()
             self.llama_status_var.set("LLM: ❌ Error")
+    
+    def start_embed_server(self):
+        """Start the dedicated embedding server (RAG) on a separate port."""
+        try:
+            from app.modules.llm.llama_cpp_manager import LlamaCppManager
+            
+            llama_path = self.config.get("llama_cpp_path")
+            embed_model = self.config.get("embed_model_path")
+            embed_port = self.config.get("llama_embed_port", 8081)
+            embed_url = f"http://localhost:{embed_port}"
+            
+            if not llama_path or not Path(llama_path).exists():
+                logger.warning("Embedding server not started: llama-server.exe not found")
+                return
+            
+            if not embed_model or not Path(embed_model).exists():
+                logger.warning(f"Embedding server not started: model not found: {embed_model}")
+                return
+            
+            # Skip if an embedding server is already running
+            probe = LlamaCppManager(exe_path=llama_path, base_url=embed_url)
+            if probe.check_connection():
+                logger.info(f"Embedding server already running on port {embed_port}")
+                return
+            
+            self.embed_manager = LlamaCppManager(exe_path=llama_path, base_url=embed_url)
+            threading.Thread(
+                target=self._run_embed_server,
+                args=(embed_model, embed_port),
+                daemon=True
+            ).start()
+            logger.info(f"Starting embedding server on port {embed_port}")
+            
+        except Exception as e:
+            logger.error(f"Error starting embedding server: {e}")
+    
+    def _run_embed_server(self, model_path: str, port: int):
+        """Run the embedding server in the background (CPU only, keeps VRAM for chat)."""
+        try:
+            success = self.embed_manager.start_server(
+                model_path=model_path,
+                port=port,
+                n_gpu_layers=0,
+                context_size=512,
+                n_threads=self.config.get("n_threads", 8),
+                embeddings=True,
+                pooling="cls"
+            )
+            if success:
+                logger.info(f"Embedding server running on port {port}")
+            else:
+                logger.error("Embedding server failed to start")
+        except Exception as e:
+            logger.error(f"Error running embedding server: {e}")
     
     def paste_to_chat(self, event):
         """Paste text from clipboard to chat history (for pasting code/results)."""
@@ -1023,7 +1084,7 @@ class MiaGUI:
         
         if result:
             # Stop current server
-            if hasattr(self, 'llama_manager'):
+            if self.llama_manager:
                 self.llama_manager.stop_server()
             
             # Update config
@@ -1173,8 +1234,12 @@ class MiaGUI:
             self.runtime_manager.stop_all()
         
         # Stop llama.cpp
-        if hasattr(self, 'llama_manager'):
+        if hasattr(self, 'llama_manager') and self.llama_manager:
             self.llama_manager.stop_server()
+        
+        # Stop embedding server
+        if hasattr(self, 'embed_manager') and self.embed_manager:
+            self.embed_manager.stop_server()
         
         # Release instance lock
         self.instance_checker.release_lock()

@@ -199,6 +199,58 @@ class TestLlamaCppManager:
         manager.process = object()
         assert manager.start_server("model.gguf") is True
 
+    def test_start_server_embedding_builds_pooling_flag(self, manager, tmp_path, monkeypatch):
+        import app.modules.llm.llama_cpp_manager as module
+
+        exe = tmp_path / "llama-server.exe"
+        exe.write_text("", encoding="utf-8")
+        model = tmp_path / "bge-m3.gguf"
+        model.write_text("", encoding="utf-8")
+        manager.exe_path = str(exe)
+
+        captured = {}
+
+        class FakePopen:
+            def __init__(self, cmd, **kwargs):
+                captured["cmd"] = cmd
+                self.pid = 1
+                self.stderr = None
+
+        monkeypatch.setattr(module.subprocess, "Popen", FakePopen)
+        monkeypatch.setattr(manager, "check_connection", lambda: True)
+
+        assert manager.start_server(
+            str(model), port=8081, n_gpu_layers=0, embeddings=True, pooling="cls"
+        ) is True
+
+        cmd = captured["cmd"]
+        assert "--embedding" in cmd
+        assert cmd[cmd.index("--pooling") + 1] == "cls"
+
+    def test_start_server_chat_has_no_pooling(self, manager, tmp_path, monkeypatch):
+        import app.modules.llm.llama_cpp_manager as module
+
+        exe = tmp_path / "llama-server.exe"
+        exe.write_text("", encoding="utf-8")
+        model = tmp_path / "chat.gguf"
+        model.write_text("", encoding="utf-8")
+        manager.exe_path = str(exe)
+
+        captured = {}
+
+        class FakePopen:
+            def __init__(self, cmd, **kwargs):
+                captured["cmd"] = cmd
+                self.pid = 1
+                self.stderr = None
+
+        monkeypatch.setattr(module.subprocess, "Popen", FakePopen)
+        monkeypatch.setattr(manager, "check_connection", lambda: True)
+
+        assert manager.start_server(str(model), embeddings=False, pooling="cls") is True
+        assert "--embedding" not in captured["cmd"]
+        assert "--pooling" not in captured["cmd"]
+
     def test_stop_server_without_process(self, manager):
         assert manager.stop_server() is True
 
