@@ -58,7 +58,12 @@ class TemporalAlertIntegration:
         alerts_generated = []
 
         for task in executed_tasks:
-            if 'alert' in task['task_text'].lower():
+            result = task.get('result') or {}
+            is_alert = (
+                result.get('task_type') == 'alert'
+                or 'alert' in task['task_text'].lower()
+            )
+            if is_alert:
                 # Если задача требует алерта
                 alert_id = self.alert_dispatcher.schedule_reminder(
                     recipient_id=self.admin_user_id,

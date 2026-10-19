@@ -227,8 +227,11 @@ class AlertDispatcher:
             return
 
         for task in executed or []:
+            result = task.get("result") or {}
             text = str(task.get("task_text", ""))
-            if "alert" in text.lower() or "критич" in text.lower():
+            if (result.get("task_type") == "alert"
+                    or "alert" in text.lower()
+                    or "критич" in text.lower()):
                 self._dispatch_alert(AlertType.CRITICAL, self.admin_user_id, text)
 
     def _dispatch_alert(self, alert_type: AlertType, recipient_id: str, message: str):

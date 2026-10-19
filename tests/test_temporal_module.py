@@ -118,6 +118,41 @@ class TestCronTasks:
             t["task_id"] != task_id for t in manager.execute_cron_tasks()
         )
 
+    @pytest.mark.parametrize(
+        "text,task_type",
+        [
+            ("alert: проверить сроки", "alert"),
+            ("напомнить про акт", "alert"),
+            ("отчёт за день", "report"),
+            ("дайджест по объектам", "report"),
+            ("health check объекта", "health_check"),
+            ("проверить документы", "document"),
+            ("просто заметка", "generic"),
+        ],
+    )
+    def test_execute_task_logic_classification(self, manager, text, task_type):
+        result = manager._execute_task_logic(text)
+        assert result["success"] is True
+        assert result["task_type"] == task_type
+        assert isinstance(result["actions"], list)
+
+    def test_execute_task_logic_extracts_object_id(self, manager):
+        result = manager._execute_task_logic("health check объекта OBJ-123")
+        assert result["task_type"] == "health_check"
+        assert result["object_id"] == "OBJ-123"
+
+    def test_execute_task_logic_generic_has_no_actions(self, manager):
+        assert manager._execute_task_logic("просто заметка")["actions"] == []
+
+    def test_execute_cron_task_returns_structured_result(self, manager):
+        task_id = manager.create_cron_task(
+            "alert: проверить сроки OBJ-9", datetime.now() - timedelta(minutes=1)
+        )
+        executed = manager.execute_cron_tasks()
+        task = next(t for t in executed if t["task_id"] == task_id)
+        assert task["result"]["task_type"] == "alert"
+        assert task["result"]["object_id"] == "OBJ-9"
+
 
 class TestTemporalAlertIntegration:
     @pytest.fixture()

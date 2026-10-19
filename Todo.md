@@ -148,6 +148,7 @@
 - [x] 8.27 Замена заглушек реальной интеграцией - COMPLETED
   (DelegationEngine: LLM-парсинг + Telegram + Inbox-задача; AccuracyContour метод 2/3;
   temporal AlertDispatcher + TemporalAlertIntegration (HealthScore/Diary/cron);
+  TemporalLogicManager._execute_task_logic: классификация задач + object_id;
   FinancialLedgerIntegration: local SQLite + HTTP 1C/ERP; tests/test_stub_integrations.py, 25 тестов)
 
 ## [✅] ЭТАП 9: Критические исправления (RFC: rfc_mia_fixes.md)

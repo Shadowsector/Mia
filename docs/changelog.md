@@ -16,6 +16,10 @@
   - `temporal.AlertDispatcher` — дайджест (10:00) и критические алерты (16:00) на основе
     `HealthScoreEngine`, cron-задачи через `TemporalLogicManager`, отправка через
     `telegram_sender`; `AlertSchema` получил реальные значения по умолчанию.
+  - `TemporalLogicManager._execute_task_logic` — реальная классификация cron-задачи
+    (`alert`/`report`/`health_check`/`document`/`generic`) с извлечением `object_id`
+    (`OBJ-...`) и структурированным списком действий; `AlertDispatcher` и
+    `TemporalAlertIntegration` используют `task_type` из результата.
   - `TemporalAlertIntegration` — дайджест собирает события дня из `DiaryManager` и статус
     из `HealthScoreEngine`; критический отчёт учитывает RED-объекты и блокирующие
     ограничения (`constraints.status = 'NOT_SATISFIED'`).
@@ -43,9 +47,9 @@
   InboxManager, KnowledgeGraph, VirtualDocuments, PreObjectTracker, ExpertTeacher,
   RoleRouter, NegativeEventTrigger, ConstraintHealthIntegration, ContractAnalyzer,
   DocumentLinker, TelegramDistiller, DiaryManager + импортируемость всех 17 модулей.
-- **Temporal module: тесты** (`tests/test_temporal_module.py` — 23 теста):
-  TemporalLogicManager (relative dates, Absolute Time Injection, cron tasks),
-  AlertDispatcher, TemporalAlertIntegration.
+- **Temporal module: тесты** (`tests/test_temporal_module.py` — 33 теста):
+  TemporalLogicManager (relative dates, Absolute Time Injection, cron tasks + классификация
+  `_execute_task_logic`), AlertDispatcher, TemporalAlertIntegration.
 - **Схема БД**: добавлены отсутствовавшие таблицы `object_events` (event_id, object_id,
   event_type, event_date, deadline_date, description, status, metadata) и `invoices`
   (invoice_id, object_id, amount, date, status, description) + индексы.
@@ -160,5 +164,5 @@
   актуальных версий (`status: actual`).
 
 ### Test results
-- **570 passed** (было 317 в начале дня; +253 теста): покрытие 15 модулей (+228),
-  интеграционные тесты de-stub (+25).
+- **580 passed** (было 317 в начале дня; +263 теста): покрытие 15 модулей (+228),
+  интеграционные тесты de-stub (+25) и тесты cron-логики (+10).

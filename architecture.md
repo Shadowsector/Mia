@@ -749,7 +749,7 @@ C:\mia\
 │   ├── test_state_replay_overrides.py # Ledger replay / overrides (17 tests)
 │   ├── test_document_classifier.py    # Google Drive classifier (31 tests)
 │   ├── test_object_diary.py       # Object Diary modules (119 tests)
-│   ├── test_temporal_module.py    # Temporal module (23 tests)
+│   ├── test_temporal_module.py    # Temporal module (33 tests)
 │   ├── test_delegation_accuracy.py    # Delegation engine / accuracy contour (29 tests)
 │   ├── test_document_pipeline.py      # Parsers, extractor, RAG ingestion (93 tests)
 │   ├── test_llm_clients.py            # Ollama client / llama.cpp manager (38 tests)

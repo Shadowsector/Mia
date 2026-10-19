@@ -3,10 +3,19 @@
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
-import json
+import re
 
 from app.core.schemas import TemporalContextSchema
 from app.modules.storage.database import get_db_connection
+
+_OBJECT_ID_RE = re.compile(r"\b(OBJ[-_ ]?\w+)\b", re.IGNORECASE)
+
+TASK_TYPE_KEYWORDS: Dict[str, tuple] = {
+    "alert": ("alert", "напомн", "напомин", "критич", "тревог", "дедлайн"),
+    "report": ("отчёт", "отчет", "сводк", "дайджест", "report"),
+    "health_check": ("health", "здоров", "проверь объект", "проверка объекта"),
+    "document": ("документ", "акт", "договор", "счёт", "счет", "накладн"),
+}
 
 
 class TemporalLogicManager:
@@ -154,13 +163,42 @@ class TemporalLogicManager:
     
     def _execute_task_logic(self, task_text: str) -> Dict[str, Any]:
         """
-        Логика выполнения задачи
-        TODO: Интеграция с другими модулями для реального выполнения
+        Логика выполнения cron задачи.
+
+        Классифицирует текст задачи по ключевым словам и возвращает
+        структурированный результат с описанием действий, которые должны
+        выполнить подписчики (AlertDispatcher, TemporalAlertIntegration).
+        Побочных эффектов здесь нет: отправка/генерация отчётов остаётся на
+        вызывающей стороне, чтобы не дублировать алерты.
         """
-        # Временная заглушка
+        text = (task_text or "").strip()
+        lowered = text.lower()
+
+        task_type = "generic"
+        for candidate, keywords in TASK_TYPE_KEYWORDS.items():
+            if any(keyword in lowered for keyword in keywords):
+                task_type = candidate
+                break
+
+        object_match = _OBJECT_ID_RE.search(text)
+        object_id = object_match.group(1) if object_match else None
+
+        actions: List[Dict[str, Any]] = []
+        if task_type == "alert":
+            actions.append({"type": "alert", "message": text})
+        elif task_type == "report":
+            actions.append({"type": "report"})
+        elif task_type == "health_check":
+            actions.append({"type": "health_check", "object_id": object_id})
+        elif task_type == "document":
+            actions.append({"type": "document_check", "object_id": object_id})
+
         return {
-            'success': True,
-            'message': f"Task executed: {task_text}"
+            "success": True,
+            "task_type": task_type,
+            "object_id": object_id,
+            "message": f"Task executed: {text}",
+            "actions": actions,
         }
     
     def inject_temporal_context_to_prompt(
