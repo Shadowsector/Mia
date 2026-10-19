@@ -1,10 +1,17 @@
 """Improved document classifier with focused patterns"""
 
 import re
-from typing import Dict, List
+from typing import Dict, List, Any
 
 class ImprovedDocumentClassifier:
     """Classifier with focused patterns for construction documents"""
+    
+    # CAD sidecar/service extensions — not real documents
+    CAD_SERVICE_EXTS = {
+        'shx', 'bak', 'sig', 'sor', 'tmp', 'log', 'pc3', 'ctb',
+        'dwl', 'dwl2', 'lsp', 'vsz', 'fmp', 'err',
+    }
+    CAD_EXTS = {'dwg', 'dxf', 'dwf'}
     
     # Focused patterns for construction documents (requires word boundaries)
     PATTERNS = {
@@ -59,7 +66,8 @@ class ImprovedDocumentClassifier:
         ],
         'passport': [
             r'\bпаспорт\b', r'\bпаспорта\b',
-            r'\bпаспорт\s*[а-я]\b'
+            r'\bпаспорт\s*[а-я]\b', r'\bтехпаспорт\b',
+            r'\bтех\s*паспорт\b', r'\bpassport\b'
         ],
         'smeta': [
             r'\bсмета\b', r'\bсметы\b',
@@ -1109,32 +1117,242 @@ class ImprovedDocumentClassifier:
         'ecologicheski': [
             r'\bэкологический\b'
         ],
-        'invoice': [
-            r'\binvoice\b'
-        ],
-        'estimate': [
-            r'\bestimate\b'
-        ],
+        # NB: duplicate 'invoice'/'estimate'/'project'/'passport' definitions
+        # removed — they overwrote the earlier blocks (incl. Russian patterns).
         'contract': [
             r'\bcontract\b'
         ],
-        'project': [
-            r'\bproject\b'
+        # --- Frequent real-world names missing from earlier patterns ---
+        'titul': [
+            r'\bтитул\b', r'\bтитульный\b', r'\bтитульный\s*лист\b'
         ],
-        'passport': [
-            r'\bpassport\b'
-        ]
+        'oblozhka': [
+            r'\bобложка\b', r'\bтитульный\s*лист\b'
+        ],
+        'soderzhanie': [
+            r'\bсодержание\b'
+        ],
+        'vedomost': [
+            r'\bведомость\b', r'\bведомости\b', r'\bведомостей\b'
+        ],
+        'profil': [
+            r'\bпрофиль\b', r'\bпродольный\b', r'\bпоперечный\b',
+            r'\bпродольн\b', r'\bпоперечн\b'
+        ],
+        'vynos': [
+            r'\bвынос\b', r'\bвыноска\b', r'\bвыноски\b'
+        ],
+        'sborka': [
+            r'\bсборочный\b', r'\bсборная\b', r'\bсборке\b',
+            r'\bсборочный\s*чертеж\b'
+        ],
+        'uzel': [
+            r'\bузел\b', r'\bузлы\b', r'\bдеталь\b', r'\bдетали\b'
+        ],
+        'sertifikat': [
+            r'\bсертификат\b', r'\bсертификаты\b'
+        ],
+        'vypiska': [
+            r'\bвыписка\b', r'\bвыписки\b'
+        ],
+        'list': [
+            r'\bлист\b', r'\bлисты\b', r'\bлист\b\s*[0-9]'
+        ],
+        'pasport_svyazi': [
+            r'\bпаспорт\s*линии\b', r'\bпаспорт\s*кабеля\b',
+            r'\bпаспорт\s*трассы\b', r'\bпаспорт\s*объекта\b'
+        ],
+        'kpmptc': [
+            r'\bкпмптц\b', r'\bкп\s*мптц\b'
+        ],
+        'aosr': [
+            r'\bаоср\b'
+        ],
+        'vspomogatelni': [
+            r'\bвспомогательный\b', r'\bвспомогательные\b'
+        ],
+        'opis': [
+            r'\bопись\b', r'\bописи\b'
+        ],
+        'zayavlenie_telco': [
+            r'\bзаявление\s*оператору\b', r'\bзаявка\s*оператору\b'
+        ],
+        'narisovanie': [
+            r'\bнарисовани\b', r'\bзарисовани\b'
+        ],
+        'zhurnal': [
+            r'\bжурнал\b', r'\bжурнала\b', r'\bжурналы\b'
+        ],
+        'akt_sverki': [
+            r'\bакт\s*сверки\b', r'\bсверка\b'
+        ],
+        'doverennost': [
+            r'\bдоверенность\b', r'\bдоверенности\b'
+        ],
+        'kommerscheskoe': [
+            r'\bкоммерческое\b', r'\bкоммерческий\b', r'\bкп\b(?!\w)'
+        ],
+        'polozhenie_grunt': [
+            r'\bположение\s*о\s*землях\b', r'\bкадастровый\b'
+        ],
+        'soglashenie': [
+            r'\bсоглашение\b', r'\bдополнительное\s*соглашение\b',
+            r'\bдоп\s*соглашение\b', r'\bдоп\s*соглаш\b'
+        ],
+        'kombinirovannoe': [
+            r'\bкомбинированный\b'
+        ],
+        'sbivochniy': [
+            r'\bсбивочный\b', r'\bсбивка\b'
+        ],
+        'raschetniy_list': [
+            r'\bрасчетный\s*лист\b', r'\bрасчетный\b'
+        ],
+        'perechen': [
+            r'\bперечень\b', r'\bсписок\b'
+        ],
+        'tabl': [
+            r'\bтаблица\b', r'\bтаблицы\b'
+        ],
+        'zametki': [
+            r'\bзаметки\b', r'\bнаброски\b'
+        ],
+        'chernovik': [
+            r'\bчерновик\b', r'\bчерновой\b'
+        ],
+        'razrabotka': [
+            r'\bразработка\b', r'\bразработки\b', r'\bразработан\b'
+        ],
+        'grunt': [
+            r'\bгрунт\b', r'\bгрунта\b', r'\bгрунтов\b',
+            r'\bинженерно\s*геологическ\b', r'\bвеерн\b'
+        ],
+        'truba': [
+            r'\bтруба\b', r'\bтрубы\b', r'\bтрубопровод\b',
+            r'\bпайп\b', r'\bpipe\b'
+        ],
+        'obratnaya_zasypka': [
+            r'\bобратная\b', r'\bзасыпка\b', r'\bзасыпки\b'
+        ],
+        'reestr': [
+            r'\bреестр\b', r'\bреестра\b', r'\bреестры\b'
+        ],
+        'poruchenie': [
+            r'\bпоручение\b', r'\bпоручения\b'
+        ],
+        'platezh': [
+            r'\bплатежное\b', r'\bплатеж\b', r'\bплатежи\b',
+            r'\bоплата\b', r'\bсчет\s*фактура\b', r'\bсчет-фактура\b'
+        ],
+        'dannye': [
+            r'\bданные\b', r'\bданных\b', r'\bисходные\b'
+        ],
+        'karta': [
+            r'\bкарта\b', r'\bкарты\b', r'\bкадастр\b'
+        ],
+        'dopusk': [
+            r'\bдопуск\b', r'\bдопуска\b', r'\bдопущен\b'
+        ],
+        'mufta': [
+            r'\bмуфта\b', r'\bмуфты\b', r'\bсварк\b'
+        ],
+        'kanal': [
+            r'\bканализ\b', r'\bканализация\b', r'\bливнев\b',
+            r'\bдождев\b'
+        ],
+        'mksi': [
+            r'\bмкси\b', r'\bкппмптц\b', r'\bмптц\b'
+        ],
+        'igdi': [
+            r'\bигди\b'
+        ],
+        'corp': [
+            r'\bкорп\b', r'\bкорпус\b'
+        ],
+        'tehnologicheskaya': [
+            r'\bтехнологическая\b', r'\bтехнологии\b'
+        ],
+        'polosatik': [
+            r'\bполосатик\b'
+        ],
+        'summa': [
+            r'\bсумму\b', r'\bсумма\b', r'\bсумм\b', r'\bитого\b'
+        ],
+        'otgruzka': [
+            r'\bотгр\b', r'\bотгрузк\b', r'\bотгружен\b'
+        ],
+        'zakl': [
+            r'\bзакл\b', r'\bзаключение\b', r'\bзакрытие\b'
+        ],
+        'sootv': [
+            r'\bсоотв\b', r'\bсоответствии\b'
+        ],
     }
+    
+    # Word-boundary shorthand: separators like _ - . ( ) should behave like spaces
+    _SEPARATORS_RE = re.compile(r'[_\-\.\(\)\[\]#,+]+')
+    
+    # Compiled pattern cache: (doc_type, pattern) -> compiled regex
+    _COMPILED: Dict[Any, re.Pattern] = {}
+    
+    # More specific types must be checked before generic ones
+    # (e.g. 'Титул_проекта' is a title page, not a project;
+    #  'Акт_сверки' is a reconciliation act, not just an act)
+    _PRIORITY_TYPES = (
+        'titul', 'oblozhka', 'soderzhanie', 'vedomost', 'sborka',
+        'akt_sverki', 'pasport_svyazi', 'chernovik', 'zakl',
+        'platezh', 'soglashenie', 'aktualni',
+    )
+    
+    @classmethod
+    def _ordered_items(cls):
+        """Yield (doc_type, patterns) with priority types first."""
+        seen = set()
+        for key in cls._PRIORITY_TYPES:
+            if key in cls.PATTERNS:
+                seen.add(key)
+                yield key, cls.PATTERNS[key]
+        for key, patterns in cls.PATTERNS.items():
+            if key not in seen:
+                yield key, patterns
+    
+    @classmethod
+    def _compiled_patterns(cls):
+        """Yield (doc_type, compiled_regex) pairs, compiling once per pattern."""
+        for doc_type, patterns in cls._ordered_items():
+            for pattern in patterns:
+                key = (doc_type, pattern)
+                compiled = cls._COMPILED.get(key)
+                if compiled is None:
+                    compiled = re.compile(pattern, re.IGNORECASE)
+                    cls._COMPILED[key] = compiled
+                yield doc_type, compiled
+    
+    @classmethod
+    def _normalize(cls, filename: str) -> str:
+        """Lowercase and turn file-name separators into spaces so that \\b
+        word boundaries work for names like 'паспорт_трассы' or 'РД-01'."""
+        return cls._SEPARATORS_RE.sub(' ', filename.lower())
     
     def classify(self, filename: str) -> str:
         """Classify document using regex patterns"""
-        filename_lower = filename.lower()
+        normalized = self._normalize(filename)
         
-        # Check each pattern for each document type
-        for doc_type, patterns in self.PATTERNS.items():
-            for pattern in patterns:
-                if re.search(pattern, filename_lower, re.IGNORECASE):
-                    return doc_type
+        # Check each pattern for each document type (compiled once, cached)
+        for doc_type, compiled in self._compiled_patterns():
+            if compiled.search(normalized):
+                return doc_type
+        
+        # Extension fallbacks for CAD files and their service files
+        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+        if ext in self.CAD_SERVICE_EXTS:
+            return 'cad_service'
+        if ext in self.CAD_EXTS:
+            return 'cad_drawing'
+        if ext in {'jpg', 'jpeg', 'png', 'tiff', 'bmp', 'gif'}:
+            return 'image'
+        if ext in {'zip', 'rar', '7z'}:
+            return 'archive'
         
         return 'unknown'
     
