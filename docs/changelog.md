@@ -29,6 +29,18 @@
     `config/employees.json` (idempotent), вызывается при старте бота.
   - Тесты: `test_seed_roles.py` (4), allowlist в `test_telegram_sender.py` (+6),
     `build_sender` в `test_alert_dispatcher_wiring.py` (+3).
+- **Эмбеддинги и RAG на llama.cpp** (+11 тестов, всего 650):
+  - Отдельный embedding-сервер `llama-server --embedding --pooling cls` на порту 8081
+    с моделью bge-m3 (`C:\models\bge-m3-Q8_0.gguf`, dim 1024); скрипт `start_embed_server.bat`.
+  - `LlamaCppClient.get_embeddings()` (батч `/v1/embeddings`) и `embeddings_available()`;
+    отдельный `LLAMA_EMBED_URL` для эмбеддингов.
+  - `app/modules/rag/llama_embeddings.py` — `LlamaCppEmbeddingFunction` (ChromaDB-совместимая);
+    `ChromaManager` принимает `embedding_function` и по умолчанию берёт llama.cpp
+    (`get_default_embedding_function`), Ollama — как легаси (`EMBED_BACKEND=ollama`).
+  - `LlamaCppManager.start_server(..., embeddings=True)` добавляет `--embedding`.
+  - Настройки `LLAMA_EMBED_URL`/`LLAMA_EMBED_MODEL`/`EMBED_BACKEND`. Проверено вживую:
+    add/search в Chroma работает через bge-m3. Тесты: `test_llama_embeddings.py` (6),
+    батч-эмбеддинги в `test_llama_cpp_client.py` (+5).
 - **Замена заглушек реальной интеграцией** (item 2; тесты — `tests/test_stub_integrations.py`, 25):
   - `DelegationEngine` — LLM-парсинг запроса (`PromptTemplates.delegation_extraction_prompt`),
     классификация ответа vs трёп (`delegation_answer_classifier_prompt`), создание задачи
@@ -190,6 +202,7 @@
   актуальных версий (`status: actual`).
 
 ### Test results
-- **639 passed** (было 317 в начале дня; +322 теста): покрытие 15 модулей (+228),
+- **650 passed** (было 317 в начале дня; +333 теста): покрытие 15 модулей (+228),
   интеграционные тесты de-stub (+25), тесты cron-логики (+10),
-  runtime-интеграция PM OS/llama.cpp/Telegram (+46), allowlist/seed/`/here` (+13).
+  runtime-интеграция PM OS/llama.cpp/Telegram (+46), allowlist/seed/`/here` (+13),
+  эмбеддинги/RAG на llama.cpp (+11).

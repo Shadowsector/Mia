@@ -8,10 +8,30 @@ from chromadb.config import Settings
 from chromadb.utils import embedding_functions
 
 
+def get_default_embedding_function():
+    """Embedding-функция по умолчанию.
+
+    `EMBED_BACKEND=llama` (по умолчанию) — llama.cpp `/v1/embeddings`
+    (отдельный сервер, bge-m3). `EMBED_BACKEND=ollama` — легаси Ollama.
+    """
+    from config import settings
+
+    backend = getattr(settings, "EMBED_BACKEND", "llama").lower()
+    if backend == "ollama":
+        return embedding_functions.OllamaEmbeddingFunction(
+            model_name=getattr(settings, "EMBED_MODEL", "bge-m3"),
+            url=getattr(settings, "OLLAMA_BASE_URL", "http://localhost:11434"),
+        )
+
+    from app.modules.rag.llama_embeddings import LlamaCppEmbeddingFunction
+
+    return LlamaCppEmbeddingFunction()
+
+
 class ChromaManager:
     """Менеджер ChromaDB для RAG системы (PersistentClient, коллекция, метаданные чанков)"""
     
-    def __init__(self, persist_directory: str = "./chroma_db"):
+    def __init__(self, persist_directory: str = "./chroma_db", embedding_function=None):
         """Инициализация PersistentClient"""
         self.persist_directory = Path(persist_directory)
         self.persist_directory.mkdir(parents=True, exist_ok=True)
@@ -29,11 +49,8 @@ class ChromaManager:
         self.collection_name = "object_diary_chunks"
         self.collection = None
         
-        # Embedding функция (nomic-embed-text через Ollama)
-        self.embedding_function = embedding_functions.OllamaEmbeddingFunction(
-            model_name="nomic-embed-text",
-            url="http://localhost:11434"
-        )
+        # Embedding функция (llama.cpp по умолчанию, см. get_default_embedding_function)
+        self.embedding_function = embedding_function or get_default_embedding_function()
         
         self._initialize_collection()
     

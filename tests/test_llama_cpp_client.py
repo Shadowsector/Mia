@@ -51,7 +51,8 @@ class TestDefaults:
     def test_default_config(self, client):
         assert client.base_url == "http://localhost:8080"
         assert client.default_model
-        assert client.embed_model == client.default_model
+        assert client.embed_model == "bge-m3"
+        assert client.embed_base_url == "http://localhost:8081"
 
     def test_embed_model_override(self, tmp_path):
         import app.modules.llm.llama_cpp_client as module
@@ -112,6 +113,33 @@ class TestEmbeddings:
         client._responses["post"] = FakeResponse(status_code=501, text="not implemented")
         with pytest.raises(module.LlamaCppError):
             client.get_embedding("текст")
+
+
+class TestEmbeddingsBatch:
+    def test_embed_base_url_defaults_to_settings(self, client):
+        assert client.embed_base_url == "http://localhost:8081"
+
+    def test_get_embeddings_batch(self, client):
+        client._responses["post"] = FakeResponse(
+            payload={"data": [{"embedding": [0.1, 0.2]}, {"embedding": [0.3, 0.4]}]}
+        )
+        out = client.get_embeddings(["a", "b"])
+        assert out == [[0.1, 0.2], [0.3, 0.4]]
+        url = client._calls["post"][0]["url"]
+        assert url.startswith("http://localhost:8081")
+        assert url.endswith("/v1/embeddings")
+
+    def test_get_embeddings_empty_no_call(self, client):
+        assert client.get_embeddings([]) == []
+        assert client._calls["post"] == []
+
+    def test_embeddings_available_true(self, client):
+        client._responses["post"] = FakeResponse(payload={"data": [{"embedding": [0.0]}]})
+        assert client.embeddings_available() is True
+
+    def test_embeddings_available_false(self, client):
+        client._responses["post"] = FakeResponse(status_code=501)
+        assert client.embeddings_available() is False
 
 
 class TestAvailability:

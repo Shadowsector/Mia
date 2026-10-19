@@ -54,9 +54,9 @@ def fake_embedding(monkeypatch):
     import app.modules.rag.chroma_manager as chroma_module
 
     monkeypatch.setattr(
-        chroma_module.embedding_functions,
-        "OllamaEmbeddingFunction",
-        lambda **kwargs: FakeEmbeddingFunction(),
+        chroma_module,
+        "get_default_embedding_function",
+        lambda *a, **k: FakeEmbeddingFunction(),
     )
     return FakeEmbeddingFunction()
 

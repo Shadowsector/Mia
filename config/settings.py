@@ -51,7 +51,11 @@ LLAMA_BASE_URL: str = _get("LLAMA_BASE_URL", "http://localhost:8080").rstrip("/"
 LLAMA_MODEL: str = _get("LLAMA_MODEL", "qwen2.5:14b-instruct")
 # Модель для эмбеддингов (нужен llama-server с флагом --embeddings). Пусто —
 # использовать основную модель.
-LLAMA_EMBED_MODEL: str = _get("LLAMA_EMBED_MODEL", "")
+LLAMA_EMBED_MODEL: str = _get("LLAMA_EMBED_MODEL", "bge-m3")
+# Отдельный llama-server для эмбеддингов (start_embed_server.bat, порт 8081).
+LLAMA_EMBED_URL: str = _get("LLAMA_EMBED_URL", "http://localhost:8081").rstrip("/")
+# Бэкенд эмбеддингов для RAG: "llama" (llama.cpp) или "ollama".
+EMBED_BACKEND: str = _get("EMBED_BACKEND", "llama")
 
 # --- Проактивные алерты PM OS ---
 # Включить фоновые алерты (дайджест 10:00, критические объекты 16:00, cron).

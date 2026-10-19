@@ -54,7 +54,8 @@ class LlamaCppManager:
         port: int = 8080,
         n_gpu_layers: int = 35,  # For RTX 5060 16GB
         context_size: int = 8192,
-        n_threads: int = 8
+        n_threads: int = 8,
+        embeddings: bool = False
     ) -> bool:
         """
         Start llama.cpp server
@@ -65,6 +66,7 @@ class LlamaCppManager:
             n_gpu_layers: Number of layers to offload to GPU
             context_size: Context window size
             n_threads: Number of CPU threads
+            embeddings: If True, run as a dedicated embedding server (--embedding)
         """
         if self.process:
             print("llama.cpp server already running")
@@ -89,6 +91,9 @@ class LlamaCppManager:
                 "--threads", str(n_threads),
                 "--host", "0.0.0.0"
             ]
+
+            if embeddings:
+                cmd.append("--embedding")
             
             print(f"Starting llama.cpp with command: {' '.join(cmd)}")
             

@@ -173,6 +173,15 @@
   без владельца не шлёт вообще); команда `/here`; `seed_roles_from_employees`
   заполняет `system_roles` из config/employees.json при старте бота;
   tests/test_seed_roles.py 4, allowlist +6, build_sender +3; всего 639 тестов)
+- [x] 8.32 Эмбеддинги и RAG на llama.cpp - COMPLETED
+  (отдельный `llama-server --embedding --pooling cls` на 8081 с bge-m3
+  (`C:\models\bge-m3-Q8_0.gguf`, dim 1024), `start_embed_server.bat`;
+  `LlamaCppClient.get_embeddings` (батч) + `embeddings_available`;
+  `app/modules/rag/llama_embeddings.py` (ChromaDB EF);
+  `ChromaManager(embedding_function=...)` + `get_default_embedding_function`
+  (llama по умолчанию, ollama — легаси через `EMBED_BACKEND`);
+  `LlamaCppManager.start_server(embeddings=True)`; настройки `LLAMA_EMBED_URL`/
+  `EMBED_BACKEND`; проверено вживую add/search; +11 тестов, всего 650)
 
 ## [✅] ЭТАП 9: Критические исправления (RFC: rfc_mia_fixes.md)
 - RFC: docs/rfc_mia_fixes.md

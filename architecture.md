@@ -333,6 +333,12 @@ Intent Detection → Response Generation → Telegram Reply
 
 **Run**: `python -m app.bot.main` (token from `.env` → `BOT_TOKEN`).
 
+**Embeddings / RAG (llama.cpp)**: a dedicated `llama-server --embedding --pooling cls`
+on port 8081 serves **bge-m3** (`C:\models\bge-m3-Q8_0.gguf`, dim 1024) via
+`start_embed_server.bat`. `ChromaManager` uses `LlamaCppEmbeddingFunction`
+(`app/modules/rag/llama_embeddings.py`) → `/v1/embeddings`; Ollama remains as a
+legacy backend via `EMBED_BACKEND=ollama`.
+
 ### 9. Memory System (`mia/memory/`)
 
 **Purpose**: Persistent message storage and semantic search
@@ -542,7 +548,10 @@ LLM_TIMEOUT=300
 # llama.cpp (primary LLM for Mia PM OS)
 LLAMA_BASE_URL=http://localhost:8080
 LLAMA_MODEL=qwen2.5:14b-instruct
-LLAMA_EMBED_MODEL=
+# Embeddings server (start_embed_server.bat, port 8081, bge-m3, --embedding)
+LLAMA_EMBED_URL=http://localhost:8081
+LLAMA_EMBED_MODEL=bge-m3
+EMBED_BACKEND=llama
 
 # Proactive alerts (PM OS)
 ALERTS_ENABLED=true
@@ -793,6 +802,7 @@ C:\mia\
 │   ├── test_bot_assistant.py          # PM OS assistant orchestrator (11 tests)
 │   ├── test_alert_dispatcher_wiring.py # PM OS alert wiring (3 tests)
 │   ├── test_seed_roles.py             # system_roles seeding (4 tests)
+│   ├── test_llama_embeddings.py       # llama.cpp ChromaDB embeddings (6 tests)
 │   └── test_google_drive_financial.py # Drive ledger, contracts, finance (68 tests)
 ├── config/
 │   ├── settings.py                # Configuration management

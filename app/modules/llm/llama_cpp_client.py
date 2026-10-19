@@ -54,6 +54,7 @@ class LlamaCppClient:
         embed_model: Optional[str] = None,
         timeout: Optional[int] = None,
         cache_dir: Optional[str] = None,
+        embed_base_url: Optional[str] = None,
     ) -> None:
         from config import settings
 
@@ -68,6 +69,12 @@ class LlamaCppClient:
             or getattr(settings, "LLAMA_EMBED_MODEL", "")
             or self.default_model
         )
+        # Отдельный сервер эмбеддингов (если не задан — берём chat-сервер).
+        self.embed_base_url = (
+            embed_base_url
+            or getattr(settings, "LLAMA_EMBED_URL", "")
+            or self.base_url
+        ).rstrip("/")
         self.timeout = timeout or getattr(settings, "LLM_TIMEOUT", 300)
 
         self.cache_dir = Path(cache_dir) if cache_dir else Path("./data/llm_cache")
@@ -132,10 +139,21 @@ class LlamaCppClient:
 
     def get_embedding(self, text: str, model: Optional[str] = None) -> List[float]:
         """Получить эмбеддинг. Требует llama-server с --embeddings (иначе 501)."""
-        payload = {"model": model or self.embed_model, "input": text}
+        embeddings = self.get_embeddings([text], model=model)
+        return embeddings[0] if embeddings else []
+
+    def get_embeddings(
+        self, texts: List[str], model: Optional[str] = None
+    ) -> List[List[float]]:
+        """Получить эмбеддинги для списка текстов (батч, /v1/embeddings)."""
+        if not texts:
+            return []
+        payload = {"model": model or self.embed_model, "input": list(texts)}
         try:
             resp = requests.post(
-                f"{self.base_url}/v1/embeddings", json=payload, timeout=self.timeout
+                f"{self.embed_base_url}/v1/embeddings",
+                json=payload,
+                timeout=self.timeout,
             )
         except requests.RequestException as e:
             raise LlamaCppError(f"llama.cpp (embeddings) недоступен: {e}") from e
@@ -145,8 +163,20 @@ class LlamaCppClient:
                 f"llama.cpp (embeddings) вернул статус {resp.status_code}: "
                 f"{resp.text[:200]}"
             )
-        data = resp.json().get("data") or [{}]
-        return data[0].get("embedding", []) or []
+        data = resp.json().get("data") or []
+        return [item.get("embedding", []) or [] for item in data]
+
+    def embeddings_available(self) -> bool:
+        """Проверить, что сервер эмбеддингов отвечает (не 501)."""
+        try:
+            resp = requests.post(
+                f"{self.embed_base_url}/v1/embeddings",
+                json={"model": self.embed_model, "input": "ping"},
+                timeout=10,
+            )
+            return resp.status_code == 200
+        except requests.RequestException:
+            return False
 
     def is_available(self) -> bool:
         try:
